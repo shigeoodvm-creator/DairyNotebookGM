@@ -1,5 +1,5 @@
-# Notebook GM - オフライン用ライブラリ取得スクリプト
-# このスクリプトを NotebookGM フォルダで実行: .\download-libs.ps1
+# DairyNotebookGM - オフライン用ライブラリ取得スクリプト
+# このスクリプトを DairyNotebookGM フォルダで実行: .\download-libs.ps1
 
 $ErrorActionPreference = 'Stop'
 $libsDir = Join-Path $PSScriptRoot 'libs'

@@ -13,7 +13,7 @@
    または https://unpkg.com/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js
 
 ブラウザで上記URLを開き「名前を付けて保存」するか、
-PowerShell で以下を実行（NotebookGM フォルダで）:
+PowerShell で以下を実行（DairyNotebookGM フォルダで）:
 
 Invoke-WebRequest -Uri "https://unpkg.com/papaparse@5.4.1/papaparse.min.js" -OutFile "libs/papaparse.min.js"
 Invoke-WebRequest -Uri "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" -OutFile "libs/chart.umd.min.js"

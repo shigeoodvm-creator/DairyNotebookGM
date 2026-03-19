@@ -110,7 +110,7 @@
   var fileHandle = null;
   var saveTimer = null;
   var needPermission = false;
-  var IDB_DB_NAME = 'notebookgm-fs-storage-v1';
+  var IDB_DB_NAME = 'dairynotebookgm-fs-storage-v1';
   var IDB_STORE_NAME = 'kv';
 
   function idbOpen() {
@@ -271,7 +271,7 @@
     if (!FS_SUPPORTED) { setLocalDataFileInfo('File System Access API 未対応のため利用不可'); return; }
     try {
       var handles = await window.showOpenFilePicker({
-        types: [{ description: 'Notebook GM データ', accept: { 'application/json': ['.json'] } }],
+        types: [{ description: 'DairyNotebookGM データ', accept: { 'application/json': ['.json'] } }],
         multiple: false
       });
       if (!handles || !handles.length) return;
@@ -289,7 +289,7 @@
     try {
       fileHandle = await window.showSaveFilePicker({
         suggestedName: getLocalDataFilename(),
-        types: [{ description: 'Notebook GM データ', accept: { 'application/json': ['.json'] } }]
+        types: [{ description: 'DairyNotebookGM データ', accept: { 'application/json': ['.json'] } }]
       });
       needPermission = false;
       // 既に画面にデータがある前提で、その内容を即保存
@@ -632,7 +632,7 @@
       '<dt>出力年月日</dt><dd>' + (outDate.getFullYear() + '年' + (outDate.getMonth() + 1) + '月' + outDate.getDate() + '日') + '</dd>' +
       '<dt>生年月日対象期間</dt><dd>' + escapeHtml(periodText) + '</dd>' +
       '</dl>' +
-      '<div class="report-branding"><span class="report-brand-name">Notebook GM</span></div>' +
+      '<div class="report-branding"><span class="report-brand-name">DairyNotebookGM</span></div>' +
       '</div>';
   }
 
@@ -1364,7 +1364,7 @@
     var out = new Date();
     var dateStr = dateToYyyymmdd(out);
     var farmName = (el.farmName.value || '').trim().replace(/[\\/:*?"<>|]/g, '') || 'report';
-    return 'notebookgm_' + dateStr + '_' + farmName + '.json';
+    return 'dairynotebookgm_' + dateStr + '_' + farmName + '.json';
   }
 
   function wrapScatterCellsForPdf() {
@@ -1466,7 +1466,7 @@
       ? '@page{size:A4 landscape;margin:10mm;}@media print{.print-report-body{padding:0.4rem 0.6rem!important;max-width:100%!important;}.print-report-body .report-header{padding:0.2rem 0.4rem!important;margin-bottom:0.25rem!important;page-break-after:avoid!important;break-after:avoid!important;}.print-report-body .report-header-dl{font-size:0.55rem!important;gap:0.05rem 0.35rem!important;}.print-report-body .report-header-dl .report-farm-name{font-size:0.7rem!important;}.print-report-body .report-brand-name{font-size:0.65rem!important;}.print-graphs-pages{display:block!important;}.print-graphs-grid{display:grid!important;grid-template-columns:repeat(2,1fr)!important;grid-template-rows:repeat(2,1fr)!important;gap:0.5rem!important;min-height:0!important;page-break-after:always!important;break-after:page!important;page-break-inside:avoid!important;break-inside:avoid!important;min-height:85vh!important;}.print-graphs-grid:last-child{page-break-after:auto!important;break-after:auto!important;}.print-graphs-grid .scatter-cell{min-height:0!important;page-break-inside:avoid!important;break-inside:avoid!important;}.print-graphs-grid .scatter-cell canvas,.print-graphs-grid .scatter-cell img{max-width:100%!important;max-height:100%!important;object-fit:contain!important;}.print-hint{display:none!important}}'
       : '@page{size:A4 portrait;margin:12mm;}@media print{.print-report-body{max-width:100%!important;padding:0.75rem!important;}.print-report-body .report-header{padding:0.4rem 0.6rem!important;margin-bottom:0.4rem!important;}.print-report-body .report-header-dl{font-size:0.65rem!important;gap:0.08rem 0.5rem!important;}.print-report-body .report-header-dl .report-farm-name{font-size:0.9rem!important;}.print-report-body .report-brand-name{font-size:0.75rem!important;}.print-report-body .card{padding:0.4rem 0.6rem!important;margin-bottom:0.4rem!important;}.print-report-body .dashboard-grid{gap:0.25rem!important;grid-template-columns:repeat(auto-fill,minmax(120px,1fr))!important;}.print-report-body .dashboard-item{padding:0.25rem 0.35rem!important;}.print-report-body .dashboard-item .metric-name{font-size:0.6rem!important;}.print-report-body .dashboard-item .avg,.print-report-body .dashboard-item .best,.print-report-body .dashboard-item .worst{font-size:0.55rem!important;}.print-report-body .report-page h3{font-size:0.75rem!important;margin-bottom:0.25rem!important;padding-bottom:0.15rem!important;}.print-report-body .table-legend-inner{padding:0.25rem 0.4rem!important;font-size:0.6rem!important;}.print-report-body .table-legend-title{font-size:0.7rem!important;}.print-report-body .table-legend-intro,.print-report-body .table-legend-list{font-size:0.6rem!important;line-height:1.25!important;}.print-report-body .table-legend-list li{margin-bottom:0.05rem!important;}.table-wrap{width:100%!important;max-width:100%!important;overflow:visible!important;}.report-table{width:100%!important;max-width:100%!important;table-layout:fixed!important;font-size:0.6rem!important;}.report-table th,.report-table td{padding:0.15rem 0.25rem!important;white-space:normal!important;word-break:break-word!important;overflow-wrap:break-word!important;}.report-table .report-table-title{font-size:0.65rem!important;padding:0.2rem 0.25rem!important;}.report-table thead{display:table-header-group}.report-table tr{page-break-inside:avoid;break-inside:avoid}.scatter-cell{page-break-inside:avoid;break-inside:avoid}.scatter-set h3{page-break-after:avoid}.print-hint{display:none!important}}';
 
-    var title = mode === 'tables' ? '表のみ印刷 - Notebook GM' : mode === 'graphs' ? 'グラフのみ印刷 - Notebook GM' : '印刷 - Notebook GM';
+    var title = mode === 'tables' ? '表のみ印刷 - DairyNotebookGM' : mode === 'graphs' ? 'グラフのみ印刷 - DairyNotebookGM' : '印刷 - DairyNotebookGM';
     var bodyClass = mode === 'graphs' ? ' print-mode-graphs' : '';
     var html = '<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>' + title + '</title><style>' + inlineCss + printCss + '</style></head><body class="print-view">' +
       '<div class="report-content print-report-body' + bodyClass + '">' + clone.innerHTML + '</div>' +
@@ -1650,9 +1650,9 @@
   function showHelp() { el.guideModal.hidden = false; }
 
   function initGuide() {
-    if (!localStorage.getItem('notebookgm_guide_shown')) {
+    if (!localStorage.getItem('dairynotebookgm_guide_shown')) {
       el.guideModal.hidden = false;
-      localStorage.setItem('notebookgm_guide_shown', '1');
+      localStorage.setItem('dairynotebookgm_guide_shown', '1');
     }
   }
 
