@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Notebook GM - 牛群ゲノムレポート</title>
+  <link rel="icon" type="image/png" href="Logo.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- 第1層: 固定ヘッダー（タイトル・用語解説・ヘルプ） -->
+    <div class="app-header-layer">
+      <header class="app-header">
+        <div class="app-header-brand">
+          <img src="Logo.png" alt="Notebook GM" class="app-logo">
+          <h1>Notebook GM</h1>
+          <nav class="app-nav-tabs" aria-label="メイン">
+            <button type="button" id="navTabInput" class="nav-tab active" data-tab="input">データ入力</button>
+            <button type="button" id="navTabReport" class="nav-tab" data-tab="report">レポート</button>
+          </nav>
+        </div>
+        <div class="header-buttons">
+          <button type="button" id="btnTermGlossary" class="btn btn-secondary">用語解説</button>
+          <button type="button" id="btnHelp" class="btn btn-secondary" aria-label="ヘルプ">ヘルプ</button>
+        </div>
+      </header>
+    </div>
+
+    <!-- 第2層: スクロールするメイン＋用語パネル -->
+    <div class="app-body">
+    <div class="app-main-wrap">
+      <main class="app-main">
+    <!-- データ入力ページ -->
+    <div id="sectionInput" class="data-input-page">
+      <h2 class="page-title">データ入力</h2>
+      <p class="page-subtitle">分析のためのパラメータとデータを設定してください</p>
+
+      <!-- 基本情報 -->
+      <section class="card card-section">
+        <h3 class="card-section-title">
+          <span class="card-section-icon card-section-icon-info" aria-hidden="true">i</span>
+          基本情報
+        </h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="farmName">農場名 <span class="required">*</span></label>
+            <input type="text" id="farmName" placeholder="農場名を入力" required>
+          </div>
+          <div class="form-group form-group-date-range">
+            <label>生年月日フィルタ</label>
+            <div class="date-range">
+              <input type="date" id="dateFrom" aria-label="開始日">
+              <span class="date-range-sep">〜</span>
+              <input type="date" id="dateTo" aria-label="終了日">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- データアップロード（ドラッグ＆ドロップ） -->
+      <section class="card card-section">
+        <h3 class="card-section-title">
+          <span class="card-section-icon card-section-icon-cloud" aria-hidden="true"></span>
+          データアップロード
+        </h3>
+        <div id="csvDropZone" class="csv-drop-zone" role="button" tabindex="0">
+          <input type="file" id="csvFile" accept=".csv" required hidden>
+          <div class="csv-drop-zone-inner">
+            <span class="csv-drop-icon" aria-hidden="true">☁</span>
+            <p class="csv-drop-text">CSVファイルをドラッグ＆ドロップ</p>
+            <p class="csv-drop-sub">またはファイルを選択してください（最大20MB）</p>
+            <button type="button" id="btnSelectCsv" class="btn btn-secondary csv-drop-btn">ファイルを選択</button>
+            <p id="csvFileName" class="csv-file-name" hidden></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ローカル保存（ユーザー指定のJSONファイルへ保存） -->
+      <section class="card card-section" id="localSaveSection">
+        <h3 class="card-section-title">
+          <span class="card-section-icon" aria-hidden="true" style="background:#059669;color:#fff;">💾</span>
+          ローカル保存
+        </h3>
+        <p class="form-hint">このレポート（単回）を、ユーザーが選んだローカルJSONファイルに保存します（サーバー保存なし）。</p>
+        <p class="form-hint" id="localDataFileInfo">ファイル未接続</p>
+        <div class="form-actions">
+          <button type="button" id="btnOpenDataFile" class="btn btn-secondary">保存済みを開く</button>
+          <button type="button" id="btnCreateDataFile" class="btn btn-secondary">新規作成</button>
+          <button type="button" id="btnSaveDataFile" class="btn btn-secondary" disabled>今すぐ保存</button>
+        </div>
+        <p class="form-hint" style="margin-top:0.5rem;">
+          対応ブラウザ: Chrome / Edge（File System Access API）
+        </p>
+      </section>
+
+      <!-- 指標設定 -->
+      <section class="card card-section">
+        <h3 class="card-section-title">
+          <span class="card-section-icon card-section-icon-chart" aria-hidden="true"></span>
+          指標設定
+        </h3>
+        <div class="form-group">
+          <label for="mainMetric">総合指標（順位付けに使用）<span class="required">*</span></label>
+          <select id="mainMetric">
+            <option value="">指標を選択してください</option>
+            <option value="DWP$">DWP$</option>
+            <option value="NM$">NM$</option>
+            <option value="TPI">TPI</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>追加指標（最大5つ）</label>
+          <p class="form-hint">一覧からダブルクリックで追加。検索で絞り込み可。</p>
+          <div class="metrics-two-panels">
+            <div class="metrics-panel-left">
+              <input type="text" id="metricSearch" placeholder="指標を検索..." autocomplete="off" class="metric-search-input">
+              <select id="additionalMetricSelect" size="8" class="metric-dropdown"></select>
+            </div>
+            <div class="metrics-panel-right">
+              <div class="selected-panel-header">
+                <span>選択済み指標</span>
+                <span id="selectedCount" class="selected-count">0個選択</span>
+              </div>
+              <div id="selectedChips" class="selected-chips selected-chips-list"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group toggles">
+          <label class="toggle-label">
+            <input type="checkbox" id="showYearAvg">
+            <span>年別平均ライン表示（生年散布図）</span>
+          </label>
+        </div>
+        <div class="form-group toggles">
+          <label class="toggle-label">
+            <input type="checkbox" id="showTrendLine">
+            <span>散布図に近似曲線（式・R²）を表示</span>
+          </label>
+        </div>
+        <div id="benchmarkSection" class="form-group benchmark-section">
+          <label>目標値ライン（Farm Benchmark）</label>
+          <div id="benchmarkInputs" class="benchmark-inputs"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" id="btnGenerate" class="btn btn-primary">レポート生成</button>
+          <button type="button" id="btnReset" class="btn btn-secondary">リセット</button>
+          <button type="button" id="btnBackEdit" class="btn btn-secondary" style="display:none;">再編集に戻る</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- レポート表示エリア -->
+    <section id="sectionReport" class="report-section" hidden>
+      <div class="report-actions">
+        <button type="button" id="btnSavePdf" class="btn btn-primary">印刷画面</button>
+        <button type="button" id="btnPrintTables" class="btn btn-secondary">表のみ印刷</button>
+        <button type="button" id="btnPrintGraphs" class="btn btn-secondary">グラフのみ印刷</button>
+        <button type="button" id="btnBackEdit2" class="btn btn-secondary">再編集に戻る</button>
+      </div>
+      <div id="reportContent" class="report-content">
+        <div id="reportHeader" class="report-header card report-page"></div>
+        <div id="dashboardCard" class="card report-page"></div>
+        <div id="tableLegendCard" class="card report-page table-legend-card" role="region" aria-label="表の色分けの説明"></div>
+        <div id="table1Card" class="card report-page"></div>
+        <div id="table2Card" class="card report-page"></div>
+        <div id="scatterSearchCard" class="card report-page scatter-search-card" hidden>
+          <div class="scatter-search-row">
+            <label for="scatterIdSearch">IDで探す</label>
+            <input type="text" id="scatterIdSearch" placeholder="動物IDを入力" autocomplete="off">
+            <button type="button" id="btnScatterIdSearch" class="btn btn-secondary">検索</button>
+            <button type="button" id="btnScatterIdClear" class="btn btn-secondary">クリア</button>
+          </div>
+          <p id="scatterSearchMessage" class="scatter-search-message" aria-live="polite"></p>
+        </div>
+        <div id="scatterDateCard" class="card report-page scatter-set"></div>
+        <div id="scatterYearCard" class="card report-page scatter-set"></div>
+      </div>
+    </section>
+      </main>
+    </div>
+
+    <aside id="termPanel" class="term-panel" hidden>
+      <div class="term-panel-header">
+        <h3 class="term-panel-title">
+          <span class="term-panel-icon" aria-hidden="true"></span>
+          用語解説
+        </h3>
+        <button type="button" id="closeTermPanel" class="btn-icon" aria-label="閉じる">×</button>
+      </div>
+      <div class="term-panel-search">
+        <input type="text" id="termSearch" placeholder="用語を検索">
+      </div>
+      <div id="termPanelContent" class="term-panel-content"></div>
+      <div class="term-panel-footer">
+        <button type="button" id="btnAllTerms" class="btn-link">すべての用語を見る →</button>
+      </div>
+    </aside>
+    </div>
+  </div>
+
+  <div id="loadingOverlay" class="loading-overlay" hidden>
+    <div class="spinner"></div>
+    <p id="loadingText">処理中...</p>
+  </div>
+
+  <div id="detailModal" class="modal" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>個体詳細</h3>
+        <button type="button" id="closeDetailModal" class="btn-icon" aria-label="閉じる">×</button>
+      </div>
+      <div id="detailModalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="errorToast" class="toast error" role="alert" hidden></div>
+
+  <!-- 初回ガイドモーダル -->
+  <div id="guideModal" class="modal guide-modal" hidden onclick="if(event.target===this) this.hidden=true">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3>Notebook GM 簡単ガイド</h3>
+        <button type="button" id="closeGuideModal" class="btn-icon" aria-label="閉じる" onclick="document.getElementById('guideModal').hidden=true">×</button>
+      </div>
+      <div class="modal-body">
+        <ol>
+          <li>農場名を入力し、必要なら生年月日でフィルタを設定します。</li>
+          <li>CLARIFIDE CSVをアップロードします。</li>
+          <li>順位付けに使う総合指標（DWP$, NM$, TPIのいずれか）を選び、追加指標を最大5つ選びます。</li>
+          <li>「レポート生成」をクリックすると、ダッシュボード・表・散布図が表示されます。</li>
+          <li>「印刷画面」で印刷用ページを開き、Ctrl+P で印刷できます。列ヘッダのⓘで用語解説を確認できます。</li>
+          <li><strong>個体詳細</strong>：レポート表示後、散布図の<strong>点</strong>をダブルクリックすると、その牛1頭の情報（ID・生年月日・指標など）がポップアップで表示されます。</li>
+        </ol>
+        <p><button type="button" id="btnGuideOk" class="btn btn-primary" onclick="document.getElementById('guideModal').hidden=true">はじめる</button></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    function closeGuide() {
+      var m = document.getElementById('guideModal');
+      if (m) { m.setAttribute('hidden', ''); m.style.display = 'none'; }
+    }
+    function initGuideClose() {
+      var m = document.getElementById('guideModal');
+      if (!m) return;
+      var btn = document.getElementById('btnGuideOk');
+      var closeBtn = document.getElementById('closeGuideModal');
+      if (btn) { btn.onclick = closeGuide; btn.addEventListener('click', closeGuide); }
+      if (closeBtn) { closeBtn.onclick = closeGuide; closeBtn.addEventListener('click', closeGuide); }
+      m.onclick = function(e) { if (e.target === m) closeGuide(); };
+      m.addEventListener('click', function(e) { if (e.target === m) closeGuide(); });
+      var content = m.querySelector('.modal-content');
+      if (content) content.addEventListener('click', function(e) { e.stopPropagation(); });
+    }
+    function closeDetail() {
+      var m = document.getElementById('detailModal');
+      if (m) { m.setAttribute('hidden', ''); m.style.display = 'none'; }
+    }
+    function initDetailClose() {
+      var m = document.getElementById('detailModal');
+      if (!m) return;
+      m.setAttribute('hidden', ''); m.style.display = 'none';
+      var btn = document.getElementById('closeDetailModal');
+      var content = m.querySelector('.modal-content');
+      if (btn) { btn.onclick = closeDetail; btn.addEventListener('click', closeDetail); }
+      m.onclick = function(e) { if (e.target === m) closeDetail(); };
+      m.addEventListener('click', function(e) { if (e.target === m) closeDetail(); });
+      if (content) content.addEventListener('click', function(e) { e.stopPropagation(); });
+    }
+    function init() {
+      initGuideClose();
+      initDetailClose();
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  })();
+  </script>
+  <script src="libs/papaparse.min.js"></script>
+  <script src="libs/chart.umd.min.js"></script>
+  <script src="libs/html2pdf.bundle.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
