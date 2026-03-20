@@ -36,6 +36,44 @@
       <h2 class="page-title">データ入力</h2>
       <p class="page-subtitle">分析のためのパラメータとデータを設定してください</p>
 
+      <!-- ローカル保存（最初に表示・作業方法の選択） -->
+      <section class="card card-section" id="localSaveSection">
+        <h3 class="card-section-title">
+          <span class="card-section-icon" aria-hidden="true" style="background:#059669;color:#fff;">💾</span>
+          ローカル保存
+        </h3>
+        <p class="form-hint">このレポート（単回）を、ユーザーが選んだローカルJSONファイルに保存します（サーバー保存なし）。</p>
+
+        <!-- Step 1: 初期選択エリア -->
+        <div id="localSaveInitialChoice">
+          <p class="form-hint"><strong>まず作業方法を選択してください：</strong></p>
+          <div class="form-actions">
+            <button type="button" id="btnCreateDataFile" class="btn btn-primary">新規作成</button>
+            <button type="button" id="btnOpenDataFile" class="btn btn-secondary">保存済みを開く</button>
+          </div>
+          <p class="form-hint" style="margin-top:0.4rem;">
+            ・<strong>新規作成</strong>：CSVファイルをアップロードして新しいレポートを作成します。<br>
+            ・<strong>保存済みを開く</strong>：以前保存したJSONファイルを読み込み、続きの作業を行います。
+          </p>
+        </div>
+
+        <!-- Step 2: 選択後ステータスエリア（初期は非表示） -->
+        <div id="localSaveStatus" hidden>
+          <p class="form-hint" id="localDataFileInfo">ファイル未接続</p>
+          <div class="form-actions">
+            <button type="button" id="btnSaveDataFile" class="btn btn-secondary" disabled>今すぐ保存</button>
+            <button type="button" id="btnChangeSaveMode" class="btn btn-secondary">戻る</button>
+          </div>
+        </div>
+
+        <p class="form-hint" style="margin-top:0.5rem;">
+          対応ブラウザ: Chrome / Edge（File System Access API）
+        </p>
+      </section>
+
+      <!-- 基本情報・データアップロード・指標設定（作業方法選択後に表示） -->
+      <div id="mainInputSections" hidden>
+
       <!-- 基本情報 -->
       <section class="card card-section">
         <h3 class="card-section-title">
@@ -59,7 +97,7 @@
       </section>
 
       <!-- データアップロード（ドラッグ＆ドロップ） -->
-      <section class="card card-section">
+      <section class="card card-section" id="csvUploadSection">
         <h3 class="card-section-title">
           <span class="card-section-icon card-section-icon-cloud" aria-hidden="true"></span>
           データアップロード
@@ -74,24 +112,6 @@
             <p id="csvFileName" class="csv-file-name" hidden></p>
           </div>
         </div>
-      </section>
-
-      <!-- ローカル保存（ユーザー指定のJSONファイルへ保存） -->
-      <section class="card card-section" id="localSaveSection">
-        <h3 class="card-section-title">
-          <span class="card-section-icon" aria-hidden="true" style="background:#059669;color:#fff;">💾</span>
-          ローカル保存
-        </h3>
-        <p class="form-hint">このレポート（単回）を、ユーザーが選んだローカルJSONファイルに保存します（サーバー保存なし）。</p>
-        <p class="form-hint" id="localDataFileInfo">ファイル未接続</p>
-        <div class="form-actions">
-          <button type="button" id="btnOpenDataFile" class="btn btn-secondary">保存済みを開く</button>
-          <button type="button" id="btnCreateDataFile" class="btn btn-secondary">新規作成</button>
-          <button type="button" id="btnSaveDataFile" class="btn btn-secondary" disabled>今すぐ保存</button>
-        </div>
-        <p class="form-hint" style="margin-top:0.5rem;">
-          対応ブラウザ: Chrome / Edge（File System Access API）
-        </p>
       </section>
 
       <!-- 指標設定 -->
@@ -148,6 +168,8 @@
           <button type="button" id="btnBackEdit" class="btn btn-secondary" style="display:none;">再編集に戻る</button>
         </div>
       </section>
+
+      </div><!-- /mainInputSections -->
     </div>
 
     <!-- レポート表示エリア -->
@@ -215,6 +237,24 @@
   </div>
 
   <div id="errorToast" class="toast error" role="alert" hidden></div>
+
+  <!-- 上書き／別名保存 選択モーダル -->
+  <div id="saveOptionsModal" class="modal" hidden>
+    <div class="modal-content" style="max-width:400px;">
+      <div class="modal-header">
+        <h3>保存方法を選択</h3>
+        <button type="button" id="closeSaveOptionsModal" class="btn-icon" aria-label="閉じる">×</button>
+      </div>
+      <div class="modal-body">
+        <p>現在接続中のファイルに上書きしますか？<br>それとも別のファイルに保存しますか？</p>
+        <div class="form-actions" style="margin-top:1rem;">
+          <button type="button" id="btnOverwriteSave" class="btn btn-primary">上書き保存</button>
+          <button type="button" id="btnSaveAsNew" class="btn btn-secondary">別に保存</button>
+          <button type="button" id="btnCancelSaveOptions" class="btn btn-secondary">キャンセル</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- 初回ガイドモーダル -->
   <div id="guideModal" class="modal guide-modal" hidden onclick="if(event.target===this) this.hidden=true">
