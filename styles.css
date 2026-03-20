@@ -585,9 +585,138 @@ body.pdf-export .report-table .report-table-title {
 .guide-modal ol { padding-left: 1.25rem; margin: 0.5rem 0; }
 .guide-modal li { margin-bottom: 0.35rem; }
 
+/* ── コメント機能 ────────────────────────────────────────────────────── */
+
+/* コメントモードトグルボタン（アクティブ時） */
+.btn-comment-mode.active {
+  background: #fff0f0;
+  color: #cc0000;
+  border-color: #cc0000;
+  font-weight: 600;
+}
+
+/* コメントゾーン（セクション間に挿入される） */
+.comment-zone {
+  margin: 0.1rem 0;
+  min-height: 0;
+}
+.comment-zone.has-comment {
+  margin: 0.25rem 0;
+}
+
+/* コメント追加ボタン（コメントモード時のみ表示） */
+.comment-add-btn {
+  display: none;
+  width: 100%;
+  padding: 0.45rem 1rem;
+  border: 2px dashed #e0c0c0;
+  border-radius: 6px;
+  background: rgba(255, 240, 240, 0.4);
+  color: #c08080;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.comment-add-btn:hover {
+  border-color: #cc0000;
+  color: #cc0000;
+  background: rgba(255, 230, 230, 0.6);
+}
+
+/* コメントモードアクティブ時：追加ボタン表示 */
+.report-content.comment-mode-active .comment-add-btn {
+  display: block;
+}
+
+/* コメントテキストブロック */
+.comment-text-block {
+  padding: 0.3rem 0.75rem;
+  position: relative;
+}
+
+/* 手書き風コメントテキスト（赤ペン先生スタイル） */
+.comment-text {
+  font-family: 'Yomogi', 'Comic Sans MS', cursive;
+  color: #cc0000;
+  font-size: 1.08rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  display: inline-block;
+  transform: rotate(-0.4deg);
+  margin: 0;
+  padding: 0;
+  filter: drop-shadow(0.5px 0.5px 0 rgba(160, 0, 0, 0.12));
+  letter-spacing: 0.01em;
+}
+
+/* 編集・削除ボタン行 */
+.comment-actions {
+  display: none;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  align-items: center;
+}
+
+/* コメントモード時に編集・削除ボタンを表示 */
+.report-content.comment-mode-active .comment-actions {
+  display: flex;
+}
+
+.btn-comment-edit,
+.btn-comment-delete {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+  cursor: pointer;
+  background: white;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.btn-comment-edit {
+  color: #2563eb;
+  border: 1px solid #93c5fd;
+}
+.btn-comment-edit:hover {
+  background: #eff6ff;
+}
+.btn-comment-delete {
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}
+.btn-comment-delete:hover {
+  background: #fef2f2;
+}
+
+/* コメント編集テキストエリア */
+#commentEditorTextarea {
+  width: 100%;
+  min-height: 100px;
+  font-family: 'Yomogi', 'Comic Sans MS', cursive;
+  color: #cc0000;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.5rem;
+  resize: vertical;
+  line-height: 1.7;
+}
+#commentEditorTextarea:focus {
+  outline: none;
+  border-color: #cc0000;
+  box-shadow: 0 0 0 2px rgba(204, 0, 0, 0.1);
+}
+
+/* ─────────────────────────────────────────────────────────────────────── */
+
 @media print {
   @page { size: A4 portrait; margin: 12mm; }
   .app-header-layer, .app-header, .report-actions, .form-actions, .btn, #sectionInput, .term-panel, .modal, .toast { display: none !important; }
+  .no-print { display: none !important; }
+  .comment-add-btn { display: none !important; }
+  .comment-actions { display: none !important; }
+  .comment-text-block { background: transparent; padding: 0.2rem 0.5rem; }
+  .comment-text { font-size: 0.95rem !important; }
   .report-content { margin: 0; max-width: 100%; padding: 0.5rem; }
 
   /* 1枚目（ヘッダー・ダッシュボード・凡例）を1ページに収める */

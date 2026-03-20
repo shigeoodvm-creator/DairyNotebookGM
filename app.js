@@ -98,6 +98,9 @@
   var filteredRows = [];
   var numericColumns = [];
   var selectedAdditional = [];
+  var reportComments = {};
+  var commentModeActive = false;
+  var commentEditorTarget = null;
   var chartInstances = [];
   var chartInstancesByContainer = { scatterDateCard: [], scatterYearCard: [] };
   /** 散布図でホバー中の個体ID。全散布図で同一IDをハイライトするために使用 */
@@ -179,7 +182,8 @@
         selectedAdditional: selectedAdditional || [],
         benchmarks: collectBenchmarks ? collectBenchmarks() : {},
         rawRows: rawRows || [],
-        csvHeaders: csvHeaders || []
+        csvHeaders: csvHeaders || [],
+        reportComments: reportComments || {}
       }
     }, null, 2);
   }
@@ -196,6 +200,7 @@
     rawRows = st.rawRows;
     csvHeaders = st.csvHeaders;
     selectedAdditional = Array.isArray(st.selectedAdditional) ? st.selectedAdditional : [];
+    reportComments = (st.reportComments && typeof st.reportComments === 'object') ? st.reportComments : {};
     numericColumns = buildNumericColumns(csvHeaders, rawRows[0] || {});
 
     if (el && el.farmName) el.farmName.value = st.farmName || '';
@@ -488,7 +493,14 @@
     closeSaveOptionsModal: document.getElementById('closeSaveOptionsModal'),
     btnOverwriteSave: document.getElementById('btnOverwriteSave'),
     btnSaveAsNew: document.getElementById('btnSaveAsNew'),
-    btnCancelSaveOptions: document.getElementById('btnCancelSaveOptions')
+    btnCancelSaveOptions: document.getElementById('btnCancelSaveOptions'),
+    // コメント機能
+    btnCommentMode: document.getElementById('btnCommentMode'),
+    commentEditorModal: document.getElementById('commentEditorModal'),
+    closeCommentEditorModal: document.getElementById('closeCommentEditorModal'),
+    commentEditorTextarea: document.getElementById('commentEditorTextarea'),
+    btnSaveComment: document.getElementById('btnSaveComment'),
+    btnCancelComment: document.getElementById('btnCancelComment')
   };
 
   function showError(msg) {
@@ -795,6 +807,145 @@
       '<li><span class="table-legend-swatch table-legend-swatch-none" aria-hidden="true"></span><strong>無色</strong>：中間50％、または「中庸」など色分けしない指標です。</li>' +
       '</ul></div>';
   }
+
+  // ── コメント機能 ────────────────────────────────────────────────────
+
+  var COMMENT_ZONES = [
+    { after: 'reportHeader', zone: 'header', label: 'ヘッダー後' },
+    { after: 'dashboardCard', zone: 'dashboard', label: 'ダッシュボード後' },
+    { after: 'tableLegendCard', zone: 'legend', label: '凡例後' },
+    { after: 'table1Card', zone: 'table1', label: '総合指標表後' },
+    { after: 'table2Card', zone: 'table2', label: '生年月日表後' },
+    { after: 'scatterDateCard', zone: 'scatterDate', label: '生年散布図後' },
+    { after: 'scatterYearCard', zone: 'scatterYear', label: '生年度散布図後' }
+  ];
+
+  function insertCommentZones() {
+    // 既存のゾーンを削除してから再挿入
+    var existing = document.querySelectorAll('#reportContent .comment-zone');
+    for (var i = 0; i < existing.length; i++) {
+      if (existing[i].parentNode) existing[i].parentNode.removeChild(existing[i]);
+    }
+    COMMENT_ZONES.forEach(function (s) {
+      var sectionEl = document.getElementById(s.after);
+      if (!sectionEl || !sectionEl.parentNode) return;
+      var zone = document.createElement('div');
+      zone.className = 'comment-zone';
+      zone.setAttribute('data-zone', s.zone);
+      sectionEl.parentNode.insertBefore(zone, sectionEl.nextSibling);
+    });
+    var rc = document.getElementById('reportContent');
+    if (rc) {
+      if (commentModeActive) rc.classList.add('comment-mode-active');
+      else rc.classList.remove('comment-mode-active');
+    }
+    renderCommentZones();
+  }
+
+  function renderCommentZones() {
+    var zones = document.querySelectorAll('#reportContent .comment-zone');
+    zones.forEach(function (zone) {
+      var zoneId = zone.getAttribute('data-zone');
+      var comment = reportComments[zoneId] || '';
+      zone.innerHTML = '';
+
+      if (comment) {
+        zone.classList.add('has-comment');
+        var textBlock = document.createElement('div');
+        textBlock.className = 'comment-text-block';
+
+        var textEl = document.createElement('p');
+        textEl.className = 'comment-text';
+        textEl.textContent = comment;
+        textBlock.appendChild(textEl);
+
+        var actions = document.createElement('div');
+        actions.className = 'comment-actions no-print';
+
+        var editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn-comment-edit';
+        editBtn.textContent = '✏ 編集';
+        (function (id) {
+          editBtn.addEventListener('click', function () { openCommentEditor(id); });
+        })(zoneId);
+
+        var delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn-comment-delete';
+        delBtn.textContent = '✕ 削除';
+        (function (id) {
+          delBtn.addEventListener('click', function () { deleteComment(id); });
+        })(zoneId);
+
+        actions.appendChild(editBtn);
+        actions.appendChild(delBtn);
+        textBlock.appendChild(actions);
+        zone.appendChild(textBlock);
+      } else {
+        zone.classList.remove('has-comment');
+        // 追加ボタン（コメントモード時のみCSS で表示）
+        var addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'comment-add-btn no-print';
+        addBtn.textContent = '✏ ここにコメントを追加';
+        (function (id) {
+          addBtn.addEventListener('click', function () { openCommentEditor(id); });
+        })(zoneId);
+        zone.appendChild(addBtn);
+      }
+    });
+  }
+
+  function toggleCommentMode() {
+    commentModeActive = !commentModeActive;
+    var rc = document.getElementById('reportContent');
+    if (rc) {
+      if (commentModeActive) rc.classList.add('comment-mode-active');
+      else rc.classList.remove('comment-mode-active');
+    }
+    var btn = el.btnCommentMode;
+    if (btn) {
+      if (commentModeActive) {
+        btn.classList.add('active');
+        btn.textContent = '✏ コメントモード ON';
+      } else {
+        btn.classList.remove('active');
+        btn.textContent = '✏ コメントモード';
+      }
+    }
+  }
+
+  function openCommentEditor(zoneId) {
+    commentEditorTarget = zoneId;
+    if (el.commentEditorTextarea) el.commentEditorTextarea.value = reportComments[zoneId] || '';
+    if (el.commentEditorModal) el.commentEditorModal.hidden = false;
+    if (el.commentEditorTextarea) el.commentEditorTextarea.focus();
+  }
+
+  function closeCommentEditor() {
+    commentEditorTarget = null;
+    if (el.commentEditorModal) el.commentEditorModal.hidden = true;
+  }
+
+  function saveCommentFromEditor() {
+    if (!commentEditorTarget) return;
+    var text = el.commentEditorTextarea ? el.commentEditorTextarea.value.trim() : '';
+    if (text) {
+      reportComments[commentEditorTarget] = text;
+    } else {
+      delete reportComments[commentEditorTarget];
+    }
+    closeCommentEditor();
+    renderCommentZones();
+  }
+
+  function deleteComment(zoneId) {
+    delete reportComments[zoneId];
+    renderCommentZones();
+  }
+
+  // ────────────────────────────────────────────────────────────────────
 
   function buildTable(rows, metrics, tableTitle, rowsPerPage, rankValues) {
     var metaCols = ['動物ID', 'Official ID', '生年月日'];
@@ -1364,6 +1515,7 @@
         bindTermSearch();
         bindScatterIdSearch();
         scheduleFileSave();
+        insertCommentZones();
       } catch (err) {
         showError(err.message || 'レポート生成に失敗しました。');
       } finally {
@@ -1503,6 +1655,8 @@
       return;
     }
     var clone = elReport.cloneNode(true);
+    // 印刷ではコメントモードのインタラクティブ要素を除外
+    clone.classList.remove('comment-mode-active');
 
     /** 印刷画面では個体検索（IDで探す）を除外する */
     var searchCard = clone.querySelector('#scatterSearchCard');
@@ -1656,6 +1810,11 @@
     r += '.scatter-cell{min-height:260px;position:relative;}';
     r += '.scatter-cell canvas,.scatter-cell img{max-width:100%;max-height:100%;display:block;}';
     r += '.scatter-no-data{padding:1rem;color:var(--text-muted);font-size:0.9rem;text-align:center;margin:0;}';
+    r += '.no-print{display:none!important;}';
+    r += '.comment-zone{margin:0.15rem 0;}';
+    r += '.comment-text-block{padding:0.3rem 0.6rem;background:transparent;}';
+    r += '.comment-text{font-family:"Yomogi","Comic Sans MS",cursive;color:#cc0000;font-size:1rem;line-height:1.65;white-space:pre-wrap;display:inline-block;transform:rotate(-0.4deg);}';
+    r += '.comment-actions{display:none!important;}';
     if (mode === 'graphs') {
       r += '.print-report-body.print-mode-graphs{padding:0.4rem 0.6rem;display:flex;flex-direction:column;}';
       r += '.print-report-body.print-mode-graphs .report-header{padding:0.2rem 0.4rem;margin-bottom:0.25rem;}';
@@ -1697,6 +1856,14 @@
     el.btnBackEdit.style.display = 'none';
     chartInstances.forEach(function (c) { try { c.destroy(); } catch (e) {} });
     chartInstances = [];
+    reportComments = {};
+    commentModeActive = false;
+    var rc = document.getElementById('reportContent');
+    if (rc) rc.classList.remove('comment-mode-active');
+    if (el.btnCommentMode) {
+      el.btnCommentMode.classList.remove('active');
+      el.btnCommentMode.textContent = '✏ コメントモード';
+    }
   }
 
   function backToEdit() {
@@ -1917,6 +2084,11 @@
   el.detailModal.addEventListener('click', function (e) { if (e.target === el.detailModal) el.detailModal.hidden = true; });
   el.btnHelp.addEventListener('click', showHelp);
   if (el.btnTermGlossary) el.btnTermGlossary.addEventListener('click', openTermPanelGlossary);
+  if (el.btnCommentMode) el.btnCommentMode.addEventListener('click', toggleCommentMode);
+  if (el.closeCommentEditorModal) el.closeCommentEditorModal.addEventListener('click', closeCommentEditor);
+  if (el.commentEditorModal) el.commentEditorModal.addEventListener('click', function (e) { if (e.target === el.commentEditorModal) closeCommentEditor(); });
+  if (el.btnSaveComment) el.btnSaveComment.addEventListener('click', saveCommentFromEditor);
+  if (el.btnCancelComment) el.btnCancelComment.addEventListener('click', closeCommentEditor);
   if (el.navTabInput) el.navTabInput.addEventListener('click', function () {
     el.sectionInput.hidden = false;
     el.sectionReport.hidden = true;
