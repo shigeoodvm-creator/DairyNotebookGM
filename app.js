@@ -110,6 +110,7 @@
   var fileHandle = null;
   var saveTimer = null;
   var needPermission = false;
+  var startMode = null; // 'new' | 'saved'
   var IDB_DB_NAME = 'dairynotebookgm-fs-storage-v1';
   var IDB_STORE_NAME = 'kv';
 
@@ -327,6 +328,97 @@
     }
   }
 
+  // ── ウィザード UI ヘルパー ──────────────────────────────────────────
+
+  /** 初期選択エリアを隠して選択後ステータスエリアを表示する */
+  function showLocalSaveStatus() {
+    if (el && el.localSaveInitialChoice) el.localSaveInitialChoice.hidden = true;
+    if (el && el.localSaveStatus) el.localSaveStatus.hidden = false;
+  }
+
+  /** 基本情報・CSV・指標設定エリアを表示する */
+  function showMainInputSections() {
+    if (el && el.mainInputSections) el.mainInputSections.hidden = false;
+  }
+
+  /** 新規作成モード開始：フォームを表示しCSVアップロードも見せる */
+  function startNewMode() {
+    startMode = 'new';
+    showLocalSaveStatus();
+    showMainInputSections();
+    if (el && el.csvUploadSection) el.csvUploadSection.hidden = false;
+    setLocalDataFileInfo('新規作成モード（保存先は「今すぐ保存」時に選択）');
+  }
+
+  /** 保存済みモード開始：JSONを開いてフォームを復元し、CSVアップロードを隠す */
+  async function startSavedMode() {
+    if (!FS_SUPPORTED) { showError('File System Access API 未対応のため利用不可'); return; }
+    try {
+      var handles = await window.showOpenFilePicker({
+        types: [{ description: 'DairyNotebookGM データ', accept: { 'application/json': ['.json'] } }],
+        multiple: false
+      });
+      if (!handles || !handles.length) return;
+      fileHandle = handles[0];
+      needPermission = false;
+      var file = await readFromHandle(fileHandle);
+      startMode = 'saved';
+      showLocalSaveStatus();
+      showMainInputSections();
+      if (el && el.csvUploadSection) el.csvUploadSection.hidden = true;
+      setLocalDataFileInfo('読み込み完了: ' + (file && file.name ? file.name : ''));
+    } catch (e) {
+      if (e && e.name !== 'AbortError') showError('ファイルの読み込みに失敗しました');
+    }
+  }
+
+  /** 作業方法変更：初期選択に戻りフォームを隠す */
+  function resetToInitialChoice() {
+    startMode = null;
+    fileHandle = null;
+    needPermission = false;
+    if (el && el.localSaveInitialChoice) el.localSaveInitialChoice.hidden = false;
+    if (el && el.localSaveStatus) el.localSaveStatus.hidden = true;
+    if (el && el.mainInputSections) el.mainInputSections.hidden = true;
+    if (el && el.localDataFileInfo) el.localDataFileInfo.textContent = 'ファイル未接続';
+    if (el && el.btnSaveDataFile) el.btnSaveDataFile.disabled = true;
+    reset();
+  }
+
+  // ── 上書き／別名保存 モーダル ──────────────────────────────────────
+
+  function openSaveOptionsModal() {
+    if (el && el.saveOptionsModal) {
+      el.saveOptionsModal.hidden = false;
+      el.saveOptionsModal.style.display = '';
+    }
+  }
+
+  function closeSaveOptionsModal() {
+    if (el && el.saveOptionsModal) {
+      el.saveOptionsModal.hidden = true;
+      el.saveOptionsModal.style.display = 'none';
+    }
+  }
+
+  /** 別ファイルに保存（新しいfileHandleを取得して保存） */
+  async function saveAsNewFile() {
+    closeSaveOptionsModal();
+    if (!FS_SUPPORTED) return;
+    try {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: getLocalDataFilename(),
+        types: [{ description: 'DairyNotebookGM データ', accept: { 'application/json': ['.json'] } }]
+      });
+      needPermission = false;
+      await writeToFile();
+    } catch (e) {
+      if (e && e.name !== 'AbortError') showError('別名保存に失敗しました');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+
   var el = {
     farmName: document.getElementById('farmName'),
     dateFrom: document.getElementById('dateFrom'),
@@ -384,7 +476,19 @@
     btnAllTerms: document.getElementById('btnAllTerms'),
     guideModal: document.getElementById('guideModal'),
     closeGuideModal: document.getElementById('closeGuideModal'),
-    btnGuideOk: document.getElementById('btnGuideOk')
+    btnGuideOk: document.getElementById('btnGuideOk'),
+    // ウィザード UI
+    mainInputSections: document.getElementById('mainInputSections'),
+    csvUploadSection: document.getElementById('csvUploadSection'),
+    localSaveInitialChoice: document.getElementById('localSaveInitialChoice'),
+    localSaveStatus: document.getElementById('localSaveStatus'),
+    btnChangeSaveMode: document.getElementById('btnChangeSaveMode'),
+    // 上書き／別名保存モーダル
+    saveOptionsModal: document.getElementById('saveOptionsModal'),
+    closeSaveOptionsModal: document.getElementById('closeSaveOptionsModal'),
+    btnOverwriteSave: document.getElementById('btnOverwriteSave'),
+    btnSaveAsNew: document.getElementById('btnSaveAsNew'),
+    btnCancelSaveOptions: document.getElementById('btnCancelSaveOptions')
   };
 
   function showError(msg) {
@@ -1775,20 +1879,30 @@
   el.metricSearch.addEventListener('input', refillMetricDropdown);
 
   // ローカル保存 UI
-  if (el.btnOpenDataFile) el.btnOpenDataFile.addEventListener('click', openLocalDataFile);
-  if (el.btnCreateDataFile) el.btnCreateDataFile.addEventListener('click', createLocalDataFile);
+  if (el.btnCreateDataFile) el.btnCreateDataFile.addEventListener('click', startNewMode);
+  if (el.btnOpenDataFile) el.btnOpenDataFile.addEventListener('click', startSavedMode);
   if (el.btnSaveDataFile) el.btnSaveDataFile.addEventListener('click', function () {
-    if (fileHandle) writeToFile();
+    if (fileHandle) openSaveOptionsModal();
     else createLocalDataFile();
   });
+  if (el.btnChangeSaveMode) el.btnChangeSaveMode.addEventListener('click', resetToInitialChoice);
+
+  // 上書き／別名保存モーダル
+  if (el.closeSaveOptionsModal) el.closeSaveOptionsModal.addEventListener('click', closeSaveOptionsModal);
+  if (el.saveOptionsModal) el.saveOptionsModal.addEventListener('click', function (e) { if (e.target === el.saveOptionsModal) closeSaveOptionsModal(); });
+  if (el.btnOverwriteSave) el.btnOverwriteSave.addEventListener('click', function () { closeSaveOptionsModal(); writeToFile(); });
+  if (el.btnSaveAsNew) el.btnSaveAsNew.addEventListener('click', saveAsNewFile);
+  if (el.btnCancelSaveOptions) el.btnCancelSaveOptions.addEventListener('click', closeSaveOptionsModal);
 
   if (!FS_SUPPORTED) {
     if (el.btnOpenDataFile) el.btnOpenDataFile.disabled = true;
     if (el.btnCreateDataFile) el.btnCreateDataFile.disabled = true;
     if (el.btnSaveDataFile) el.btnSaveDataFile.disabled = true;
-    setLocalDataFileInfo('File System Access API 未対応のため利用不可');
-  } else {
-    setLocalDataFileInfo('ファイル未接続');
+    var fsHint = document.createElement('p');
+    fsHint.className = 'form-hint';
+    fsHint.style.color = '#dc2626';
+    fsHint.textContent = 'File System Access API 未対応のため利用不可（Chrome / Edge をご使用ください）';
+    if (el.localSaveInitialChoice) el.localSaveInitialChoice.appendChild(fsHint);
   }
 
   el.btnGenerate.addEventListener('click', runReport);
