@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'none';">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DairyNotebookGM - 牛群ゲノムレポート</title>
   <link rel="icon" type="image/png" href="Logo.png">
@@ -93,7 +94,7 @@
         <div class="form-grid">
           <div class="form-group">
             <label for="farmName">農場名 <span class="required">*</span></label>
-            <input type="text" id="farmName" placeholder="農場名を入力" required>
+            <input type="text" id="farmName" placeholder="農場名を入力" required autocomplete="off" maxlength="100">
           </div>
           <div class="form-group form-group-date-range">
             <label>生年月日フィルタ</label>
@@ -292,6 +293,24 @@
     </div>
   </div>
 
+  <!-- パスワードモーダル（暗号化保存・復号） -->
+  <div id="passwordModal" class="modal" hidden>
+    <div class="modal-content" style="max-width:420px;">
+      <div class="modal-header">
+        <h3 id="passwordModalTitle">パスワード</h3>
+      </div>
+      <div class="modal-body">
+        <p id="passwordModalHint" style="font-size:0.85rem;color:#555;margin-bottom:0.75rem;"></p>
+        <input type="password" id="passwordInput" style="width:100%;padding:0.5rem 0.75rem;border:1px solid #ccc;border-radius:4px;font-size:1rem;box-sizing:border-box;" placeholder="パスワードを入力" autocomplete="current-password">
+        <div class="form-actions" style="margin-top:1rem;">
+          <button type="button" id="btnPasswordOk" class="btn btn-primary">OK</button>
+          <button type="button" id="btnPasswordSkip" class="btn btn-secondary">パスワードなしで保存</button>
+          <button type="button" id="btnPasswordCancel" class="btn btn-secondary">キャンセル</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 上書き／別名保存 選択モーダル -->
   <div id="saveOptionsModal" class="modal" hidden>
     <div class="modal-content" style="max-width:400px;">
@@ -326,7 +345,34 @@
           <li>「印刷画面」で印刷用ページを開き、Ctrl+P で印刷できます。列ヘッダのⓘで用語解説を確認できます。</li>
           <li><strong>個体詳細</strong>：レポート表示後、散布図の<strong>点</strong>をダブルクリックすると、その牛1頭の情報（ID・生年月日・指標など）がポップアップで表示されます。</li>
         </ol>
-        <p><button type="button" id="btnGuideOk" class="btn btn-primary" onclick="document.getElementById('guideModal').hidden=true">はじめる</button></p>
+
+        <div class="guide-security-box">
+          <div class="guide-security-title">
+            <span class="guide-security-icon" aria-hidden="true">🔒</span>
+            個人情報の取り扱いとセキュリティへの取り組み
+          </div>
+          <ul class="guide-security-list">
+            <li>
+              <strong>データは外部に一切送信されません</strong><br>
+              CSVに含まれる個体ID・生年月日などのデータはすべてお使いのPC内のみで処理されます。クラウドやサーバーへの送信は行いません。
+            </li>
+            <li>
+              <strong>保存ファイルをパスワードで暗号化できます</strong><br>
+              「今すぐ保存」時にパスワードを設定すると、保存ファイル（JSON）が <strong>AES-256-GCM</strong> で暗号化されます。第三者がファイルを入手しても、正しいパスワードなしには内容を読み取れません。
+            </li>
+            <li>
+              <strong>CSVファイルの検証</strong><br>
+              アップロード時にファイルの種類（.csv）とサイズ（最大20MB）を自動チェックし、意図しないファイルの読み込みを防ぎます。
+            </li>
+            <li>
+              <strong>オフラインで動作します</strong><br>
+              フォントの読み込みを除き、インターネット接続がなくても使用できます。
+            </li>
+          </ul>
+          <p class="guide-security-note">保存ファイルのパスワードはアプリ内に保存されません。忘れるとファイルを開けなくなりますのでご注意ください。</p>
+        </div>
+
+        <p style="margin-top:1rem;"><button type="button" id="btnGuideOk" class="btn btn-primary" onclick="document.getElementById('guideModal').hidden=true">はじめる</button></p>
       </div>
     </div>
   </div>

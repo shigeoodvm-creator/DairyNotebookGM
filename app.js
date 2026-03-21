@@ -6,6 +6,13 @@
   var MAIN_METRICS = ['DWP$', 'NM$', 'TPI'];
   var MAX_ADDITIONAL = 5;
 
+  /** セキュリティ: 許可するフォント・サイズのホワイトリスト */
+  var ALLOWED_FONTS = ['Yomogi', 'Hachi Maru Pop', 'Klee One', 'Zen Kurenaido', 'Yuji Syuku'];
+  var ALLOWED_FONT_SIZES = ['0.75rem', '0.85rem', '0.95rem', '1.1rem', '1.25rem'];
+
+  /** Web Crypto API 対応チェック */
+  var CRYPTO_SUPPORTED = !!(window.crypto && window.crypto.subtle);
+
   /** 利用期限（YYYY-MM-DD）。null の場合は期限なし。例: '2027-12-31' とすると2027年12月31日まで有効。 */
   var EXPIRY_DATE = '2027-12-31';
 
@@ -158,6 +165,91 @@
     }).catch(function () {});
   }
 
+  // ── 暗号化ユーティリティ（AES-GCM + PBKDF2）────────────────────────
+
+  function bufToArr(buf) { return Array.from(new Uint8Array(buf)); }
+  function arrToBuf(arr) { return new Uint8Array(arr).buffer; }
+
+  function deriveKey(password, salt) {
+    var enc = new TextEncoder();
+    return window.crypto.subtle.importKey(
+      'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
+    ).then(function (keyMat) {
+      return window.crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: new Uint8Array(salt), iterations: 100000, hash: 'SHA-256' },
+        keyMat,
+        { name: 'AES-GCM', length: 256 },
+        false, ['encrypt', 'decrypt']
+      );
+    });
+  }
+
+  function encryptJSON(plaintext, password) {
+    var salt = bufToArr(window.crypto.getRandomValues(new Uint8Array(16)));
+    var iv = bufToArr(window.crypto.getRandomValues(new Uint8Array(12)));
+    return deriveKey(password, salt).then(function (key) {
+      var enc = new TextEncoder();
+      return window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: new Uint8Array(iv) }, key, enc.encode(plaintext)
+      );
+    }).then(function (cipherBuf) {
+      return { encrypted: true, salt: salt, iv: iv, data: bufToArr(cipherBuf) };
+    });
+  }
+
+  function decryptJSON(encObj, password) {
+    return deriveKey(password, encObj.salt).then(function (key) {
+      return window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: new Uint8Array(encObj.iv) },
+        key,
+        arrToBuf(encObj.data)
+      );
+    }).then(function (plainBuf) {
+      return new TextDecoder().decode(plainBuf);
+    });
+  }
+
+  // ── パスワードモーダル ─────────────────────────────────────────────
+
+  function showPasswordModal(mode) {
+    return new Promise(function (resolve) {
+      var modal = document.getElementById('passwordModal');
+      var input = document.getElementById('passwordInput');
+      var btnOk = document.getElementById('btnPasswordOk');
+      var btnSkip = document.getElementById('btnPasswordSkip');
+      var btnCancel = document.getElementById('btnPasswordCancel');
+      var hint = document.getElementById('passwordModalHint');
+      if (!modal) { resolve({ action: 'skip' }); return; }
+      input.value = '';
+      if (mode === 'save') {
+        hint.textContent = '個人情報を保護するため、パスワードを設定できます（任意）。空欄のままOKを押すと暗号化なしで保存します。';
+        btnSkip.hidden = false;
+      } else {
+        hint.textContent = 'このファイルはパスワードで保護されています。パスワードを入力してください。';
+        btnSkip.hidden = true;
+      }
+      modal.hidden = false;
+      modal.style.display = '';
+      setTimeout(function () { input.focus(); }, 50);
+      function cleanup() {
+        modal.hidden = true;
+        modal.style.display = 'none';
+        btnOk.removeEventListener('click', onOk);
+        if (btnSkip) btnSkip.removeEventListener('click', onSkip);
+        btnCancel.removeEventListener('click', onCancel);
+        input.removeEventListener('keydown', onKey);
+      }
+      function onOk() { var pw = input.value; cleanup(); resolve({ action: 'ok', password: pw }); }
+      function onSkip() { cleanup(); resolve({ action: 'skip' }); }
+      function onCancel() { cleanup(); resolve({ action: 'cancel' }); }
+      function onKey(e) { if (e.key === 'Enter') onOk(); if (e.key === 'Escape') onCancel(); }
+      btnOk.addEventListener('click', onOk);
+      if (btnSkip) btnSkip.addEventListener('click', onSkip);
+      btnCancel.addEventListener('click', onCancel);
+      input.addEventListener('keydown', onKey);
+    });
+  }
+
   function setLocalDataFileInfo(text) {
     if (el && el.localDataFileInfo) el.localDataFileInfo.textContent = text || 'ファイル未接続';
     // 単回レポートのため、保存ボタンは常に有効にして「ファイル未選択なら新規作成」へフォールバックする
@@ -206,8 +298,8 @@
     csvHeaders = st.csvHeaders;
     selectedAdditional = Array.isArray(st.selectedAdditional) ? st.selectedAdditional : [];
     reportComments = (st.reportComments && typeof st.reportComments === 'object') ? st.reportComments : {};
-    commentFont = (typeof st.commentFont === 'string' && st.commentFont) ? st.commentFont : 'Yomogi';
-    commentFontSize = (typeof st.commentFontSize === 'string' && st.commentFontSize) ? st.commentFontSize : '0.95rem';
+    commentFont = (ALLOWED_FONTS.indexOf(st.commentFont) !== -1) ? st.commentFont : 'Yomogi';
+    commentFontSize = (ALLOWED_FONT_SIZES.indexOf(st.commentFontSize) !== -1) ? st.commentFontSize : '0.95rem';
     if (el.commentFontSelect) el.commentFontSelect.value = commentFont;
     if (el.commentFontSizeSelect) el.commentFontSizeSelect.value = commentFontSize;
     numericColumns = buildNumericColumns(csvHeaders, rawRows[0] || {});
@@ -250,6 +342,24 @@
     return handle.getFile().then(function (file) {
       return file.text().then(function (text) {
         var parsed = JSON.parse(text || '{}');
+        if (parsed && parsed.encrypted === true && CRYPTO_SUPPORTED) {
+          return showPasswordModal('load').then(function (pwResult) {
+            if (pwResult.action === 'cancel') {
+              var err = new Error('キャンセルされました');
+              err.name = 'AbortError';
+              throw err;
+            }
+            var pw = (pwResult.action === 'ok') ? (pwResult.password || '') : '';
+            return decryptJSON(parsed, pw).then(function (plaintext) {
+              var inner = JSON.parse(plaintext);
+              applyDataJSON(inner);
+              return file;
+            }).catch(function (e) {
+              if (e && e.name === 'AbortError') throw e;
+              throw new Error('パスワードが正しくないか、ファイルが破損しています');
+            });
+          });
+        }
         applyDataJSON(parsed);
         return file;
       });
@@ -270,10 +380,29 @@
         return;
       }
     }
+    var jsonStr = dataToJSON();
+    if (CRYPTO_SUPPORTED) {
+      var pwResult = await showPasswordModal('save');
+      if (pwResult.action === 'cancel') {
+        setLocalDataFileInfo('保存をキャンセルしました');
+        return;
+      }
+      if (pwResult.action === 'ok' && pwResult.password) {
+        try {
+          var encObj = await encryptJSON(jsonStr, pwResult.password);
+          encObj.version = 2;
+          encObj.savedAt = new Date().toISOString();
+          jsonStr = JSON.stringify(encObj, null, 2);
+        } catch (e) {
+          showError('暗号化に失敗しました。パスワードなしで保存します。');
+          jsonStr = dataToJSON();
+        }
+      }
+    }
     setLoading(true, 'ローカル保存中...');
     try {
       var w = await fileHandle.createWritable();
-      await w.write(dataToJSON());
+      await w.write(jsonStr);
       await w.close();
       setLocalDataFileInfo('保存しました');
     } catch (err) {
@@ -2117,6 +2246,19 @@
   el.csvFile.addEventListener('change', function () {
     var file = this.files[0];
     if (!file) {
+      setCsvFileName(null);
+      return;
+    }
+    var validType = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv');
+    if (!validType) {
+      showError('CSVファイル（.csv）を選択してください。');
+      this.value = '';
+      setCsvFileName(null);
+      return;
+    }
+    if (file.size > MAX_CSV_MB * 1024 * 1024) {
+      showError('ファイルサイズは' + MAX_CSV_MB + 'MB以下にしてください。');
+      this.value = '';
       setCsvFileName(null);
       return;
     }

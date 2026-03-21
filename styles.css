@@ -582,10 +582,53 @@ body.pdf-export .report-table .report-table-title {
   left: 1rem;
 }
 
-.guide-modal .modal-content { max-width: 520px; }
+.guide-modal .modal-content { max-width: 560px; }
 .guide-modal .modal-body { padding: 1.25rem; }
 .guide-modal ol { padding-left: 1.25rem; margin: 0.5rem 0; }
 .guide-modal li { margin-bottom: 0.35rem; }
+
+/* セキュリティ説明ボックス */
+.guide-security-box {
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-left: 4px solid #16a34a;
+  border-radius: 6px;
+}
+.guide-security-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+  font-size: 0.93rem;
+  color: #166534;
+  margin-bottom: 0.7rem;
+}
+.guide-security-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+.guide-security-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: #1f2937;
+}
+.guide-security-list li {
+  margin-bottom: 0.6rem;
+}
+.guide-security-list li:last-child {
+  margin-bottom: 0;
+}
+.guide-security-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+  border-top: 1px solid #bbf7d0;
+  padding-top: 0.6rem;
+}
 
 /* ── コメント機能 ────────────────────────────────────────────────────── */
 
