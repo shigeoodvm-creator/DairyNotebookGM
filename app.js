@@ -98,6 +98,12 @@
   var filteredRows = [];
   var numericColumns = [];
   var selectedAdditional = [];
+  var reportComments = {};
+  var commentFont = 'Yomogi';
+  var commentFontSize = '0.95rem';
+  var commentModeActive = false;
+  var reportGenerated = false;
+  var commentEditorTarget = null;
   var chartInstances = [];
   var chartInstancesByContainer = { scatterDateCard: [], scatterYearCard: [] };
   /** 散布図でホバー中の個体ID。全散布図で同一IDをハイライトするために使用 */
@@ -179,7 +185,10 @@
         selectedAdditional: selectedAdditional || [],
         benchmarks: collectBenchmarks ? collectBenchmarks() : {},
         rawRows: rawRows || [],
-        csvHeaders: csvHeaders || []
+        csvHeaders: csvHeaders || [],
+        reportComments: reportComments || {},
+        commentFont: commentFont || 'Yomogi',
+        commentFontSize: commentFontSize || '0.95rem'
       }
     }, null, 2);
   }
@@ -196,6 +205,11 @@
     rawRows = st.rawRows;
     csvHeaders = st.csvHeaders;
     selectedAdditional = Array.isArray(st.selectedAdditional) ? st.selectedAdditional : [];
+    reportComments = (st.reportComments && typeof st.reportComments === 'object') ? st.reportComments : {};
+    commentFont = (typeof st.commentFont === 'string' && st.commentFont) ? st.commentFont : 'Yomogi';
+    commentFontSize = (typeof st.commentFontSize === 'string' && st.commentFontSize) ? st.commentFontSize : '0.95rem';
+    if (el.commentFontSelect) el.commentFontSelect.value = commentFont;
+    if (el.commentFontSizeSelect) el.commentFontSizeSelect.value = commentFontSize;
     numericColumns = buildNumericColumns(csvHeaders, rawRows[0] || {});
 
     if (el && el.farmName) el.farmName.value = st.farmName || '';
@@ -208,6 +222,7 @@
     // 入力UI再構築
     if (el && el.metricSearch) el.metricSearch.value = '';
     if (el && el.sectionReport) el.sectionReport.hidden = true;
+    if (el && el.reportActionsHeader) el.reportActionsHeader.hidden = true;
     if (el && el.sectionInput) el.sectionInput.hidden = false;
     if (el && el.btnBackEdit) el.btnBackEdit.style.display = 'none';
 
@@ -473,6 +488,7 @@
     selectedCount: document.getElementById('selectedCount'),
     navTabInput: document.getElementById('navTabInput'),
     navTabReport: document.getElementById('navTabReport'),
+    reportActionsHeader: document.getElementById('reportActionsHeader'),
     btnAllTerms: document.getElementById('btnAllTerms'),
     guideModal: document.getElementById('guideModal'),
     closeGuideModal: document.getElementById('closeGuideModal'),
@@ -488,7 +504,18 @@
     closeSaveOptionsModal: document.getElementById('closeSaveOptionsModal'),
     btnOverwriteSave: document.getElementById('btnOverwriteSave'),
     btnSaveAsNew: document.getElementById('btnSaveAsNew'),
-    btnCancelSaveOptions: document.getElementById('btnCancelSaveOptions')
+    btnCancelSaveOptions: document.getElementById('btnCancelSaveOptions'),
+    // コメント機能
+    btnCommentMode: document.getElementById('btnCommentMode'),
+    commentEditorModal: document.getElementById('commentEditorModal'),
+    closeCommentEditorModal: document.getElementById('closeCommentEditorModal'),
+    commentEditorDiv: document.getElementById('commentEditorDiv'),
+    commentHighlightToolbar: document.getElementById('commentHighlightToolbar'),
+    btnRemoveHighlight: document.getElementById('btnRemoveHighlight'),
+    commentFontSelect: document.getElementById('commentFontSelect'),
+    commentFontSizeSelect: document.getElementById('commentFontSizeSelect'),
+    btnSaveComment: document.getElementById('btnSaveComment'),
+    btnCancelComment: document.getElementById('btnCancelComment')
   };
 
   function showError(msg) {
@@ -778,6 +805,140 @@
     return div.innerHTML;
   }
 
+  var HIGHLIGHT_COLORS = ['#FFFF66', '#66FF99', '#FF99CC', '#99CCFF', '#FFCC66'];
+
+  /** rgb(r,g,b) または #rrggbb を大文字16進数 #RRGGBB に正規化 */
+  function rgbToHex(rgb) {
+    if (!rgb) return null;
+    var s = rgb.trim();
+    if (/^#[0-9a-fA-F]{3,6}$/.test(s)) return s.toUpperCase();
+    var m = s.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/);
+    if (!m) return null;
+    return '#' + [m[1], m[2], m[3]].map(function (n) {
+      return ('0' + parseInt(n, 10).toString(16)).slice(-2).toUpperCase();
+    }).join('');
+  }
+
+  /**
+   * コメントHTMLをサニタイズする。
+   * 許可: テキストノード, <br>, <span style="background-color: [許可色]">
+   * それ以外の要素はテキストに変換。
+   */
+  function sanitizeCommentHtml(html) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    function processNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) return node.cloneNode(false);
+      if (node.nodeType !== Node.ELEMENT_NODE) return null;
+      var tag = node.tagName.toUpperCase();
+      if (tag === 'BR') return document.createElement('br');
+      if (tag === 'SPAN') {
+        var hex = rgbToHex(node.style.backgroundColor);
+        if (hex && HIGHLIGHT_COLORS.indexOf(hex) !== -1) {
+          var span = document.createElement('span');
+          span.style.backgroundColor = hex;
+          for (var i = 0; i < node.childNodes.length; i++) {
+            var c = processNode(node.childNodes[i]);
+            if (c) span.appendChild(c);
+          }
+          return span;
+        }
+        // 許可外カラーのspan → 子ノードをそのまま展開
+        var frag = document.createDocumentFragment();
+        for (var i = 0; i < node.childNodes.length; i++) {
+          var c = processNode(node.childNodes[i]);
+          if (c) frag.appendChild(c);
+        }
+        return frag;
+      }
+      // ブロック要素 (div, p 等) → 子を展開して末尾に <br> を追加
+      var BLOCK = ['DIV', 'P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE'];
+      var frag = document.createDocumentFragment();
+      for (var i = 0; i < node.childNodes.length; i++) {
+        var c = processNode(node.childNodes[i]);
+        if (c) frag.appendChild(c);
+      }
+      if (BLOCK.indexOf(tag) !== -1) frag.appendChild(document.createElement('br'));
+      return frag;
+    }
+    var out = document.createElement('div');
+    for (var i = 0; i < tmp.childNodes.length; i++) {
+      var r = processNode(tmp.childNodes[i]);
+      if (r) out.appendChild(r);
+    }
+    // 末尾の余分な <br> を削除
+    while (out.lastChild && out.lastChild.nodeName === 'BR') out.removeChild(out.lastChild);
+    return out.innerHTML;
+  }
+
+  /** 保存されたコメント値（旧プレーンテキストまたは新HTML）をエディタdivにロード */
+  function loadCommentIntoEditor(divEl, stored) {
+    if (!stored) { divEl.innerHTML = ''; return; }
+    if (stored.indexOf('<') !== -1) {
+      divEl.innerHTML = sanitizeCommentHtml(stored);
+    } else {
+      divEl.innerHTML = escapeHtml(stored).replace(/\n/g, '<br>');
+    }
+  }
+
+  /** contenteditable divから保存可能なHTMLを取得 */
+  function getContentEditableHtml(divEl) {
+    return sanitizeCommentHtml(divEl.innerHTML);
+  }
+
+  /** 選択中テキストに蛍光マーカーを適用 */
+  function applyHighlight(color) {
+    var editorDiv = el.commentEditorDiv;
+    if (!editorDiv) return;
+    editorDiv.focus();
+    // 保存済みselectionを復元
+    var sel = window.getSelection();
+    if (editorDiv._savedRange) {
+      sel.removeAllRanges();
+      sel.addRange(editorDiv._savedRange);
+      editorDiv._savedRange = null;
+    }
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    var range = sel.getRangeAt(0);
+    if (!editorDiv.contains(range.commonAncestorContainer)) return;
+    var span = document.createElement('span');
+    span.style.backgroundColor = color;
+    try {
+      range.surroundContents(span);
+    } catch (e) {
+      var fragment = range.extractContents();
+      span.appendChild(fragment);
+      range.insertNode(span);
+    }
+    sel.removeAllRanges();
+  }
+
+  /** 選択範囲内のハイライトspanを解除 */
+  function removeHighlight() {
+    var editorDiv = el.commentEditorDiv;
+    if (!editorDiv) return;
+    editorDiv.focus();
+    var sel = window.getSelection();
+    if (editorDiv._savedRange) {
+      sel.removeAllRanges();
+      sel.addRange(editorDiv._savedRange);
+      editorDiv._savedRange = null;
+    }
+    var spans = editorDiv.querySelectorAll('span[style*="background-color"]');
+    var range = (sel && sel.rangeCount > 0) ? sel.getRangeAt(0) : null;
+    spans.forEach(function (span) {
+      try {
+        if (!range || range.isCollapsed || range.intersectsNode(span)) {
+          var parent = span.parentNode;
+          if (!parent) return;
+          while (span.firstChild) parent.insertBefore(span.firstChild, span);
+          parent.removeChild(span);
+          parent.normalize();
+        }
+      } catch (e) {}
+    });
+  }
+
   function formatNum(n) {
     if (n == null || isNaN(n)) return '—';
     var num = Number(n);
@@ -795,6 +956,159 @@
       '<li><span class="table-legend-swatch table-legend-swatch-none" aria-hidden="true"></span><strong>無色</strong>：中間50％、または「中庸」など色分けしない指標です。</li>' +
       '</ul></div>';
   }
+
+  // ── コメント機能 ────────────────────────────────────────────────────
+
+  var COMMENT_ZONES = [
+    { after: 'reportHeader', zone: 'header', label: 'ヘッダー後' },
+    { after: 'dashboardCard', zone: 'dashboard', label: 'ダッシュボード後' },
+    { after: 'tableLegendCard', zone: 'legend', label: '凡例後' },
+    { after: 'table1Card', zone: 'table1', label: '総合指標表後' },
+    { after: 'table2Card', zone: 'table2', label: '生年月日表後' },
+    { after: 'scatterDateCard', zone: 'scatterDate', label: '生年散布図後' },
+    { after: 'scatterYearCard', zone: 'scatterYear', label: '生年度散布図後' }
+  ];
+
+  function insertCommentZones() {
+    // 既存のゾーンを削除してから再挿入
+    var existing = document.querySelectorAll('#reportContent .comment-zone');
+    for (var i = 0; i < existing.length; i++) {
+      if (existing[i].parentNode) existing[i].parentNode.removeChild(existing[i]);
+    }
+    COMMENT_ZONES.forEach(function (s) {
+      var sectionEl = document.getElementById(s.after);
+      if (!sectionEl || !sectionEl.parentNode) return;
+      var zone = document.createElement('div');
+      zone.className = 'comment-zone';
+      zone.setAttribute('data-zone', s.zone);
+      sectionEl.parentNode.insertBefore(zone, sectionEl.nextSibling);
+    });
+    var rc = document.getElementById('reportContent');
+    if (rc) {
+      if (commentModeActive) rc.classList.add('comment-mode-active');
+      else rc.classList.remove('comment-mode-active');
+    }
+    renderCommentZones();
+  }
+
+  function renderCommentZones() {
+    var zones = document.querySelectorAll('#reportContent .comment-zone');
+    zones.forEach(function (zone) {
+      var zoneId = zone.getAttribute('data-zone');
+      var comment = reportComments[zoneId] || '';
+      zone.innerHTML = '';
+
+      if (comment) {
+        zone.classList.add('has-comment');
+        var textBlock = document.createElement('div');
+        textBlock.className = 'comment-text-block';
+
+        var textEl = document.createElement('p');
+        textEl.className = 'comment-text';
+        textEl.style.fontFamily = "'" + commentFont + "', cursive";
+        textEl.style.fontSize = commentFontSize;
+        if (comment.indexOf('<') !== -1) {
+          textEl.innerHTML = sanitizeCommentHtml(comment);
+        } else {
+          textEl.innerHTML = escapeHtml(comment).replace(/\n/g, '<br>');
+        }
+        textBlock.appendChild(textEl);
+
+        var actions = document.createElement('div');
+        actions.className = 'comment-actions no-print';
+
+        var editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'btn-comment-edit';
+        editBtn.textContent = '✏ 編集';
+        (function (id) {
+          editBtn.addEventListener('click', function () { openCommentEditor(id); });
+        })(zoneId);
+
+        var delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'btn-comment-delete';
+        delBtn.textContent = '✕ 削除';
+        (function (id) {
+          delBtn.addEventListener('click', function () { deleteComment(id); });
+        })(zoneId);
+
+        actions.appendChild(editBtn);
+        actions.appendChild(delBtn);
+        textBlock.appendChild(actions);
+        zone.appendChild(textBlock);
+      } else {
+        zone.classList.remove('has-comment');
+        // 追加ボタン（コメントモード時のみCSS で表示）
+        var addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'comment-add-btn no-print';
+        addBtn.textContent = '✏ ここにコメントを追加';
+        (function (id) {
+          addBtn.addEventListener('click', function () { openCommentEditor(id); });
+        })(zoneId);
+        zone.appendChild(addBtn);
+      }
+    });
+  }
+
+  function toggleCommentMode() {
+    commentModeActive = !commentModeActive;
+    var rc = document.getElementById('reportContent');
+    if (rc) {
+      if (commentModeActive) rc.classList.add('comment-mode-active');
+      else rc.classList.remove('comment-mode-active');
+    }
+    var btn = el.btnCommentMode;
+    if (btn) {
+      if (commentModeActive) {
+        btn.classList.add('active');
+        btn.textContent = '✏ コメントモード ON';
+      } else {
+        btn.classList.remove('active');
+        btn.textContent = '✏ コメントモード';
+      }
+    }
+  }
+
+  function openCommentEditor(zoneId) {
+    commentEditorTarget = zoneId;
+    if (el.commentEditorDiv) {
+      loadCommentIntoEditor(el.commentEditorDiv, reportComments[zoneId] || '');
+      el.commentEditorDiv.style.fontFamily = "'" + commentFont + "', cursive";
+      el.commentEditorDiv.style.fontSize = commentFontSize;
+      el.commentEditorDiv._savedRange = null;
+    }
+    if (el.commentFontSelect) el.commentFontSelect.value = commentFont;
+    if (el.commentFontSizeSelect) el.commentFontSizeSelect.value = commentFontSize;
+    if (el.commentEditorModal) el.commentEditorModal.hidden = false;
+    if (el.commentEditorDiv) el.commentEditorDiv.focus();
+  }
+
+  function closeCommentEditor() {
+    commentEditorTarget = null;
+    if (el.commentEditorModal) el.commentEditorModal.hidden = true;
+  }
+
+  function saveCommentFromEditor() {
+    if (!commentEditorTarget) return;
+    var html = el.commentEditorDiv ? getContentEditableHtml(el.commentEditorDiv) : '';
+    var textOnly = el.commentEditorDiv ? el.commentEditorDiv.textContent.trim() : '';
+    if (textOnly) {
+      reportComments[commentEditorTarget] = html;
+    } else {
+      delete reportComments[commentEditorTarget];
+    }
+    closeCommentEditor();
+    renderCommentZones();
+  }
+
+  function deleteComment(zoneId) {
+    delete reportComments[zoneId];
+    renderCommentZones();
+  }
+
+  // ────────────────────────────────────────────────────────────────────
 
   function buildTable(rows, metrics, tableTitle, rowsPerPage, rankValues) {
     var metaCols = ['動物ID', 'Official ID', '生年月日'];
@@ -836,7 +1150,7 @@
       cols.forEach(function (col, i) {
         var stickyClass = i < 2 ? ' sticky-col' : '';
         if (col === '順位') {
-          tr += '<td class="' + stickyClass + '">' + (rank != null ? String(rank) : '—') + '</td>';
+          tr += '<td class="' + stickyClass + '" data-col="順位">' + (rank != null ? String(rank) : '—') + '</td>';
           return;
         }
         var cellClass = '';
@@ -850,12 +1164,12 @@
         if (col === '動物ID' || col === 'Official ID') {
           var rowId = getRowId(row);
           if (rowId !== '') {
-            tr += '<td class="' + cellClass + stickyClass + '"><span class="scatter-id-link" data-row-id="' + escapeHtml(rowId) + '" role="button" tabindex="0" title="クリックで散布図でこのIDを強調">' + (typeof val === 'string' ? val : escapeHtml(String(val))) + '</span></td>';
+            tr += '<td class="' + cellClass + stickyClass + '" data-col="' + escapeHtml(col) + '"><span class="scatter-id-link" data-row-id="' + escapeHtml(rowId) + '" role="button" tabindex="0" title="クリックで散布図でこのIDを強調">' + (typeof val === 'string' ? val : escapeHtml(String(val))) + '</span></td>';
           } else {
-            tr += '<td class="' + cellClass + stickyClass + '">' + (typeof val === 'string' ? val : escapeHtml(String(val))) + '</td>';
+            tr += '<td class="' + cellClass + stickyClass + '" data-col="' + escapeHtml(col) + '">' + (typeof val === 'string' ? val : escapeHtml(String(val))) + '</td>';
           }
         } else {
-          tr += '<td class="' + cellClass + stickyClass + '">' + (typeof val === 'string' ? val : escapeHtml(String(val))) + '</td>';
+          tr += '<td class="' + cellClass + stickyClass + '" data-col="' + escapeHtml(col) + '">' + (typeof val === 'string' ? val : escapeHtml(String(val))) + '</td>';
         }
       });
       return tr + '</tr>';
@@ -1347,8 +1661,10 @@
         renderScatterSet('scatterDateCard', 'date', data, metrics, false, benchmarks, showTrendLine);
         renderScatterSet('scatterYearCard', 'year', data, metrics, showYearAvg, benchmarks, showTrendLine);
 
+        reportGenerated = true;
         el.sectionInput.hidden = true;
         el.sectionReport.hidden = false;
+        if (el.reportActionsHeader) el.reportActionsHeader.hidden = false;
         el.btnBackEdit.style.display = 'inline-block';
         if (el.navTabInput) el.navTabInput.classList.remove('active');
         if (el.navTabReport) el.navTabReport.classList.add('active');
@@ -1364,6 +1680,7 @@
         bindTermSearch();
         bindScatterIdSearch();
         scheduleFileSave();
+        insertCommentZones();
       } catch (err) {
         showError(err.message || 'レポート生成に失敗しました。');
       } finally {
@@ -1394,8 +1711,6 @@
     requestAnimationFrame(function () {
       var wrap = document.querySelector('.app-main-wrap');
       if (wrap) wrap.scrollTop = 0;
-      var reportActions = document.querySelector('.report-actions');
-      if (reportActions) reportActions.scrollIntoView({ block: 'start', behavior: 'auto' });
     });
   }
 
@@ -1503,6 +1818,8 @@
       return;
     }
     var clone = elReport.cloneNode(true);
+    // 印刷ではコメントモードのインタラクティブ要素を除外
+    clone.classList.remove('comment-mode-active');
 
     /** 印刷画面では個体検索（IDで探す）を除外する */
     var searchCard = clone.querySelector('#scatterSearchCard');
@@ -1568,11 +1885,15 @@
     var inlineCss = getPrintViewInlineCss(mode);
     var printCss = mode === 'graphs'
       ? '@page{size:A4 landscape;margin:10mm;}@media print{.print-report-body{padding:0.4rem 0.6rem!important;max-width:100%!important;}.print-report-body .report-header{padding:0.2rem 0.4rem!important;margin-bottom:0.25rem!important;page-break-after:avoid!important;break-after:avoid!important;}.print-report-body .report-header-dl{font-size:0.55rem!important;gap:0.05rem 0.35rem!important;}.print-report-body .report-header-dl .report-farm-name{font-size:0.7rem!important;}.print-report-body .report-brand-name{font-size:0.65rem!important;}.print-graphs-pages{display:block!important;}.print-graphs-grid{display:grid!important;grid-template-columns:repeat(2,1fr)!important;grid-template-rows:repeat(2,1fr)!important;gap:0.5rem!important;min-height:0!important;page-break-after:always!important;break-after:page!important;page-break-inside:avoid!important;break-inside:avoid!important;min-height:85vh!important;}.print-graphs-grid:last-child{page-break-after:auto!important;break-after:auto!important;}.print-graphs-grid .scatter-cell{min-height:0!important;page-break-inside:avoid!important;break-inside:avoid!important;}.print-graphs-grid .scatter-cell canvas,.print-graphs-grid .scatter-cell img{max-width:100%!important;max-height:100%!important;object-fit:contain!important;}.print-hint{display:none!important}}'
-      : '@page{size:A4 portrait;margin:12mm;}@media print{.print-report-body{max-width:100%!important;padding:0.75rem!important;}.print-report-body .report-header{padding:0.4rem 0.6rem!important;margin-bottom:0.4rem!important;}.print-report-body .report-header-dl{font-size:0.65rem!important;gap:0.08rem 0.5rem!important;}.print-report-body .report-header-dl .report-farm-name{font-size:0.9rem!important;}.print-report-body .report-brand-name{font-size:0.75rem!important;}.print-report-body .card{padding:0.4rem 0.6rem!important;margin-bottom:0.4rem!important;}.print-report-body .dashboard-grid{gap:0.25rem!important;grid-template-columns:repeat(auto-fill,minmax(120px,1fr))!important;}.print-report-body .dashboard-item{padding:0.25rem 0.35rem!important;}.print-report-body .dashboard-item .metric-name{font-size:0.6rem!important;}.print-report-body .dashboard-item .avg,.print-report-body .dashboard-item .best,.print-report-body .dashboard-item .worst{font-size:0.55rem!important;}.print-report-body .report-page h3{font-size:0.75rem!important;margin-bottom:0.25rem!important;padding-bottom:0.15rem!important;}.print-report-body .table-legend-inner{padding:0.25rem 0.4rem!important;font-size:0.6rem!important;}.print-report-body .table-legend-title{font-size:0.7rem!important;}.print-report-body .table-legend-intro,.print-report-body .table-legend-list{font-size:0.6rem!important;line-height:1.25!important;}.print-report-body .table-legend-list li{margin-bottom:0.05rem!important;}.table-wrap{width:100%!important;max-width:100%!important;overflow:visible!important;}.report-table{width:100%!important;max-width:100%!important;table-layout:fixed!important;font-size:0.6rem!important;}.report-table th,.report-table td{padding:0.15rem 0.25rem!important;white-space:normal!important;word-break:break-word!important;overflow-wrap:break-word!important;}.report-table .report-table-title{font-size:0.65rem!important;padding:0.2rem 0.25rem!important;}.report-table thead{display:table-header-group}.report-table tr{page-break-inside:avoid;break-inside:avoid}.scatter-cell{page-break-inside:avoid;break-inside:avoid}.scatter-set h3{page-break-after:avoid}.print-hint{display:none!important}}';
+      : '@page{size:A4 portrait;margin:12mm;}@media print{.print-report-body{max-width:100%!important;padding:0.75rem!important;}.print-report-body .report-header{padding:0.4rem 0.6rem!important;margin-bottom:0.4rem!important;}.print-report-body .report-header-dl{font-size:0.65rem!important;gap:0.08rem 0.5rem!important;}.print-report-body .report-header-dl .report-farm-name{font-size:0.9rem!important;}.print-report-body .report-brand-name{font-size:0.75rem!important;}.print-report-body .card{padding:0.4rem 0.6rem!important;margin-bottom:0.4rem!important;}.print-report-body .dashboard-grid{gap:0.25rem!important;grid-template-columns:repeat(auto-fill,minmax(120px,1fr))!important;}.print-report-body .dashboard-item{padding:0.25rem 0.35rem!important;}.print-report-body .dashboard-item .metric-name{font-size:0.6rem!important;}.print-report-body .dashboard-item .avg,.print-report-body .dashboard-item .best,.print-report-body .dashboard-item .worst{font-size:0.55rem!important;}.print-report-body .report-page h3{font-size:0.75rem!important;margin-bottom:0.25rem!important;padding-bottom:0.15rem!important;}.print-report-body .table-legend-inner{padding:0.25rem 0.4rem!important;font-size:0.6rem!important;}.print-report-body .table-legend-title{font-size:0.7rem!important;}.print-report-body .table-legend-intro,.print-report-body .table-legend-list{font-size:0.6rem!important;line-height:1.25!important;}.print-report-body .table-legend-list li{margin-bottom:0.05rem!important;}.table-wrap{width:100%!important;max-width:100%!important;overflow:visible!important;}.report-table{width:100%!important;max-width:100%!important;table-layout:fixed!important;font-size:0.6rem!important;}.report-table th,.report-table td{padding:0.15rem 0.25rem!important;white-space:normal!important;word-break:break-word!important;overflow-wrap:break-word!important;}.report-table .report-table-title{font-size:0.65rem!important;padding:0.2rem 0.25rem!important;}.report-table thead{display:table-header-group}.report-table tr{page-break-inside:avoid;break-inside:avoid}.scatter-cell{page-break-inside:avoid;break-inside:avoid}.scatter-set h3{page-break-after:avoid}.report-table th[data-col="順位"]{width:3%!important;}.report-table th[data-col="動物ID"]{width:5%!important;}.report-table th[data-col="生年月日"]{width:11%!important;}.report-table td[data-col="生年月日"]{white-space:nowrap!important;}.print-hint{display:none!important}}';
 
     var title = mode === 'tables' ? '表のみ印刷 - DairyNotebookGM' : mode === 'graphs' ? 'グラフのみ印刷 - DairyNotebookGM' : '印刷 - DairyNotebookGM';
     var bodyClass = mode === 'graphs' ? ' print-mode-graphs' : '';
-    var html = '<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>' + title + '</title><style>' + inlineCss + printCss + '</style></head><body class="print-view">' +
+    var html = '<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>' + title + '</title>' +
+      '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+      '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+      '<link href="https://fonts.googleapis.com/css2?family=Yomogi&family=Hachi+Maru+Pop&family=Klee+One&family=Zen+Kurenaido&family=Yuji+Syuku&display=swap" rel="stylesheet">' +
+      '<style>' + inlineCss + printCss + '</style></head><body class="print-view">' +
       '<div class="report-content print-report-body' + bodyClass + '">' + clone.innerHTML + '</div>' +
       '<p class="print-hint" style="margin:2rem 1.5rem;font-size:0.9rem;color:#666;">Ctrl+P で印刷してください。</p></body></html>';
     var blob = new Blob([html], { type: 'text/html; charset=utf-8' });
@@ -1639,6 +1960,10 @@
     r += '.print-report-body .report-table{width:100%!important;max-width:100%;table-layout:fixed;font-size:0.6rem;}';
     r += '.print-report-body .report-table th,.print-report-body .report-table td{padding:0.15rem 0.25rem;white-space:normal;word-break:break-word;overflow-wrap:break-word;line-height:1.2;}';
     r += '.print-report-body .report-table .report-table-title{font-size:0.65rem!important;padding:0.2rem 0.25rem!important;}';
+    r += '.print-report-body .report-table th[data-col="順位"]{width:3%;}';
+    r += '.print-report-body .report-table th[data-col="動物ID"]{width:5%;}';
+    r += '.print-report-body .report-table th[data-col="生年月日"]{width:11%;}';
+    r += '.print-report-body .report-table td[data-col="生年月日"]{white-space:nowrap!important;}';
     r += '.table-legend-inner{padding:0.75rem 1rem;font-size:0.9rem;}';
     r += '.table-legend-title{margin:0 0 0.5rem;font-size:1rem;font-weight:600;}';
     r += '.table-legend-intro{margin:0 0 0.75rem;color:var(--text-muted);line-height:1.5;}';
@@ -1656,6 +1981,12 @@
     r += '.scatter-cell{min-height:260px;position:relative;}';
     r += '.scatter-cell canvas,.scatter-cell img{max-width:100%;max-height:100%;display:block;}';
     r += '.scatter-no-data{padding:1rem;color:var(--text-muted);font-size:0.9rem;text-align:center;margin:0;}';
+    r += '.no-print{display:none!important;}';
+    r += '.comment-zone{margin:0.15rem 0;}';
+    r += '.comment-text-block{padding:0.3rem 0.6rem;background:transparent;}';
+    r += '.comment-text{font-family:"' + commentFont + '","Comic Sans MS",cursive;color:#cc0000;font-size:' + commentFontSize + ';line-height:1.65;white-space:pre-wrap;display:inline-block;transform:rotate(-0.4deg);}';
+    r += '.comment-text span[style*="background-color"]{-webkit-print-color-adjust:exact;print-color-adjust:exact;border-radius:2px;padding:0 1px;}';
+    r += '.comment-actions{display:none!important;}';
     if (mode === 'graphs') {
       r += '.print-report-body.print-mode-graphs{padding:0.4rem 0.6rem;display:flex;flex-direction:column;}';
       r += '.print-report-body.print-mode-graphs .report-header{padding:0.2rem 0.4rem;margin-bottom:0.25rem;}';
@@ -1692,15 +2023,27 @@
     renderChips();
     el.additionalMetricSelect.innerHTML = '';
     el.benchmarkInputs.innerHTML = '';
+    reportGenerated = false;
     el.sectionReport.hidden = true;
+    if (el.reportActionsHeader) el.reportActionsHeader.hidden = true;
     el.sectionInput.hidden = false;
     el.btnBackEdit.style.display = 'none';
     chartInstances.forEach(function (c) { try { c.destroy(); } catch (e) {} });
     chartInstances = [];
+    reportComments = {};
+    commentModeActive = false;
+    var rc = document.getElementById('reportContent');
+    if (rc) rc.classList.remove('comment-mode-active');
+    if (el.btnCommentMode) {
+      el.btnCommentMode.classList.remove('active');
+      el.btnCommentMode.textContent = '✏ コメントモード';
+    }
   }
 
   function backToEdit() {
+    reportGenerated = false;
     el.sectionReport.hidden = true;
+    if (el.reportActionsHeader) el.reportActionsHeader.hidden = true;
     el.sectionInput.hidden = false;
     el.btnBackEdit.style.display = 'none';
     if (el.navTabReport) el.navTabReport.classList.remove('active');
@@ -1917,14 +2260,96 @@
   el.detailModal.addEventListener('click', function (e) { if (e.target === el.detailModal) el.detailModal.hidden = true; });
   el.btnHelp.addEventListener('click', showHelp);
   if (el.btnTermGlossary) el.btnTermGlossary.addEventListener('click', openTermPanelGlossary);
+  if (el.btnCommentMode) el.btnCommentMode.addEventListener('click', toggleCommentMode);
+  if (el.closeCommentEditorModal) el.closeCommentEditorModal.addEventListener('click', closeCommentEditor);
+  if (el.commentEditorModal) el.commentEditorModal.addEventListener('click', function (e) { if (e.target === el.commentEditorModal) closeCommentEditor(); });
+  if (el.btnSaveComment) el.btnSaveComment.addEventListener('click', saveCommentFromEditor);
+  if (el.btnCancelComment) el.btnCancelComment.addEventListener('click', closeCommentEditor);
+  if (el.commentFontSelect) el.commentFontSelect.addEventListener('change', function () {
+    commentFont = el.commentFontSelect.value;
+    if (el.commentEditorDiv) el.commentEditorDiv.style.fontFamily = "'" + commentFont + "', cursive";
+    document.querySelectorAll('#reportContent .comment-text').forEach(function (t) {
+      t.style.fontFamily = "'" + commentFont + "', cursive";
+    });
+  });
+  if (el.commentFontSizeSelect) el.commentFontSizeSelect.addEventListener('change', function () {
+    commentFontSize = el.commentFontSizeSelect.value;
+    if (el.commentEditorDiv) el.commentEditorDiv.style.fontSize = commentFontSize;
+    document.querySelectorAll('#reportContent .comment-text').forEach(function (t) {
+      t.style.fontSize = commentFontSize;
+    });
+  });
+  if (el.commentHighlightToolbar) {
+    el.commentHighlightToolbar.addEventListener('mousedown', function (e) {
+      // ボタンクリック時にselectionが失われないようにpreventDefault
+      var btn = e.target.closest('.btn-highlight');
+      if (btn) e.preventDefault();
+    });
+    el.commentHighlightToolbar.addEventListener('click', function (e) {
+      var btn = e.target.closest('.btn-highlight');
+      if (btn) applyHighlight(btn.getAttribute('data-color'));
+    });
+  }
+  if (el.btnRemoveHighlight) {
+    el.btnRemoveHighlight.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    el.btnRemoveHighlight.addEventListener('click', function () { removeHighlight(); });
+  }
+  if (el.commentEditorDiv) {
+    // Enterキーで <br> を挿入（Chromeの<div>挿入を防ぐ）
+    el.commentEditorDiv.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        var sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        var range = sel.getRangeAt(0);
+        range.deleteContents();
+        var br = document.createElement('br');
+        range.insertNode(br);
+        // カーソルをbrの直後に移動
+        range.setStartAfter(br);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
+    // 貼り付けはプレーンテキストのみ許可
+    el.commentEditorDiv.addEventListener('paste', function (e) {
+      e.preventDefault();
+      var text = (e.clipboardData || window.clipboardData).getData('text/plain');
+      document.execCommand('insertText', false, text);
+    });
+    // テキスト未入力の場合はHTMLをクリア（placeholderを正しく表示するため）
+    el.commentEditorDiv.addEventListener('blur', function () {
+      if (el.commentEditorDiv.textContent.trim() === '') {
+        el.commentEditorDiv.innerHTML = '';
+      }
+    });
+    // ハイライトボタン押下時にselectionを保存
+    el.commentEditorDiv.addEventListener('mouseup', function () {
+      var sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+        el.commentEditorDiv._savedRange = sel.getRangeAt(0).cloneRange();
+      }
+    });
+    el.commentEditorDiv.addEventListener('keyup', function () {
+      var sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+        el.commentEditorDiv._savedRange = sel.getRangeAt(0).cloneRange();
+      } else {
+        el.commentEditorDiv._savedRange = null;
+      }
+    });
+  }
   if (el.navTabInput) el.navTabInput.addEventListener('click', function () {
     el.sectionInput.hidden = false;
     el.sectionReport.hidden = true;
+    if (el.reportActionsHeader) el.reportActionsHeader.hidden = true;
     el.navTabReport.classList.remove('active');
     el.navTabInput.classList.add('active');
   });
   if (el.navTabReport) el.navTabReport.addEventListener('click', function () {
     el.sectionReport.hidden = false;
+    if (el.reportActionsHeader) el.reportActionsHeader.hidden = !reportGenerated;
     el.sectionInput.hidden = true;
     el.navTabInput.classList.remove('active');
     el.navTabReport.classList.add('active');

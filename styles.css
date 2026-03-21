@@ -55,10 +55,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 2rem;
+  gap: 0.75rem;
+  padding: 0.65rem 2rem;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow);
+  flex-wrap: wrap;
 }
 .app-header-brand { display: flex; align-items: center; gap: 0.75rem; }
 .app-logo { height: 3.25rem; width: auto; display: block; }
@@ -314,9 +316,9 @@ body {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.report-section { margin-top: 1rem; }
-.report-actions { display: flex; gap: 0.75rem; margin-bottom: var(--space); }
-.report-content { margin-top: 1rem; }
+.report-section { margin-top: 0; }
+.report-actions-header { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.report-content { margin-top: 0.5rem; }
 
 .report-header { margin-bottom: var(--space); }
 .report-header-inner { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
@@ -585,9 +587,156 @@ body.pdf-export .report-table .report-table-title {
 .guide-modal ol { padding-left: 1.25rem; margin: 0.5rem 0; }
 .guide-modal li { margin-bottom: 0.35rem; }
 
+/* ── コメント機能 ────────────────────────────────────────────────────── */
+
+/* コメントモードトグルボタン（アクティブ時） */
+.btn-comment-mode.active {
+  background: #fff0f0;
+  color: #cc0000;
+  border-color: #cc0000;
+  font-weight: 600;
+}
+
+/* コメントゾーン（セクション間に挿入される） */
+.comment-zone {
+  margin: 0.1rem 0;
+  min-height: 0;
+}
+.comment-zone.has-comment {
+  margin: 0.25rem 0;
+}
+
+/* コメント追加ボタン（コメントモード時のみ表示） */
+.comment-add-btn {
+  display: none;
+  width: 100%;
+  padding: 0.45rem 1rem;
+  border: 2px dashed #e0c0c0;
+  border-radius: 6px;
+  background: rgba(255, 240, 240, 0.4);
+  color: #c08080;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.comment-add-btn:hover {
+  border-color: #cc0000;
+  color: #cc0000;
+  background: rgba(255, 230, 230, 0.6);
+}
+
+/* コメントモードアクティブ時：追加ボタン表示 */
+.report-content.comment-mode-active .comment-add-btn {
+  display: block;
+}
+
+/* コメントテキストブロック */
+.comment-text-block {
+  padding: 0.3rem 0.75rem;
+  position: relative;
+}
+
+/* 手書き風コメントテキスト（赤ペン先生スタイル） */
+.comment-text {
+  font-family: 'Yomogi', 'Comic Sans MS', cursive;
+  color: #cc0000;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  display: inline-block;
+  transform: rotate(-0.4deg);
+  margin: 0;
+  padding: 0;
+  filter: drop-shadow(0.5px 0.5px 0 rgba(160, 0, 0, 0.12));
+  letter-spacing: 0.01em;
+}
+
+/* 編集・削除ボタン行 */
+.comment-actions {
+  display: none;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  align-items: center;
+}
+
+/* コメントモード時に編集・削除ボタンを表示 */
+.report-content.comment-mode-active .comment-actions {
+  display: flex;
+}
+
+.btn-comment-edit,
+.btn-comment-delete {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+  cursor: pointer;
+  background: white;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.btn-comment-edit {
+  color: #2563eb;
+  border: 1px solid #93c5fd;
+}
+.btn-comment-edit:hover {
+  background: #eff6ff;
+}
+.btn-comment-delete {
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}
+.btn-comment-delete:hover {
+  background: #fef2f2;
+}
+
+/* コメント編集エリア（contenteditable） */
+#commentEditorDiv {
+  width: 100%;
+  min-height: 100px;
+  font-family: 'Yomogi', 'Comic Sans MS', cursive;
+  color: #cc0000;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.5rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  outline: none;
+  cursor: text;
+  box-sizing: border-box;
+}
+#commentEditorDiv:focus {
+  border-color: #cc0000;
+  box-shadow: 0 0 0 2px rgba(204, 0, 0, 0.1);
+}
+#commentEditorDiv:empty::before {
+  content: attr(data-placeholder);
+  color: #aaa;
+  pointer-events: none;
+  font-style: italic;
+}
+#commentEditorDiv span[style*="background-color"] {
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.btn-highlight:hover, .btn-highlight:focus {
+  outline: 2px solid #555;
+  outline-offset: 1px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────── */
+
 @media print {
   @page { size: A4 portrait; margin: 12mm; }
-  .app-header-layer, .app-header, .report-actions, .form-actions, .btn, #sectionInput, .term-panel, .modal, .toast { display: none !important; }
+  .app-header-layer, .app-header, .report-actions-header, .form-actions, .btn, #sectionInput, .term-panel, .modal, .toast { display: none !important; }
+  .no-print { display: none !important; }
+  .comment-add-btn { display: none !important; }
+  .comment-actions { display: none !important; }
+  .comment-text-block { background: transparent; padding: 0.2rem 0.5rem; }
+  .comment-text { font-size: 0.95rem !important; }
+  .comment-text span[style*="background-color"] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .report-content { margin: 0; max-width: 100%; padding: 0.5rem; }
 
   /* 1枚目（ヘッダー・ダッシュボード・凡例）を1ページに収める */
@@ -611,6 +760,10 @@ body.pdf-export .report-table .report-table-title {
   .report-table { width: 100% !important; max-width: 100% !important; table-layout: fixed !important; font-size: 0.6rem !important; }
   .report-table th, .report-table td { padding: 0.15rem 0.25rem !important; white-space: normal !important; word-break: break-word !important; overflow-wrap: break-word !important; }
   .report-table .report-table-title { font-size: 0.65rem !important; padding: 0.2rem 0.25rem !important; background: #e2e8f0 !important; }
+  .report-table th[data-col="順位"] { width: 3% !important; }
+  .report-table th[data-col="動物ID"] { width: 5% !important; }
+  .report-table th[data-col="生年月日"] { width: 11% !important; }
+  .report-table td[data-col="生年月日"] { white-space: nowrap !important; }
   .report-table thead { display: table-header-group; }
   .report-table tr { page-break-inside: avoid; break-inside: avoid; }
 

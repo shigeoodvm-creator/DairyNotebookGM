@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DairyNotebookGM - 牛群ゲノムレポート</title>
   <link rel="icon" type="image/png" href="Logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Yomogi&family=Hachi+Maru+Pop&family=Klee+One&family=Zen+Kurenaido&family=Yuji+Syuku&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -19,6 +22,13 @@
             <button type="button" id="navTabInput" class="nav-tab active" data-tab="input">データ入力</button>
             <button type="button" id="navTabReport" class="nav-tab" data-tab="report">レポート</button>
           </nav>
+        </div>
+        <div id="reportActionsHeader" class="report-actions-header" hidden>
+          <button type="button" id="btnSavePdf" class="btn btn-primary">印刷画面</button>
+          <button type="button" id="btnPrintTables" class="btn btn-secondary">表のみ印刷</button>
+          <button type="button" id="btnPrintGraphs" class="btn btn-secondary">グラフのみ印刷</button>
+          <button type="button" id="btnBackEdit2" class="btn btn-secondary">再編集に戻る</button>
+          <button type="button" id="btnCommentMode" class="btn btn-secondary btn-comment-mode">✏ コメントモード</button>
         </div>
         <div class="header-buttons">
           <button type="button" id="btnTermGlossary" class="btn btn-secondary">用語解説</button>
@@ -174,12 +184,6 @@
 
     <!-- レポート表示エリア -->
     <section id="sectionReport" class="report-section" hidden>
-      <div class="report-actions">
-        <button type="button" id="btnSavePdf" class="btn btn-primary">印刷画面</button>
-        <button type="button" id="btnPrintTables" class="btn btn-secondary">表のみ印刷</button>
-        <button type="button" id="btnPrintGraphs" class="btn btn-secondary">グラフのみ印刷</button>
-        <button type="button" id="btnBackEdit2" class="btn btn-secondary">再編集に戻る</button>
-      </div>
       <div id="reportContent" class="report-content">
         <div id="reportHeader" class="report-header card report-page"></div>
         <div id="dashboardCard" class="card report-page"></div>
@@ -237,6 +241,56 @@
   </div>
 
   <div id="errorToast" class="toast error" role="alert" hidden></div>
+
+  <!-- コメント編集モーダル -->
+  <div id="commentEditorModal" class="modal" hidden>
+    <div class="modal-content" style="max-width:500px;">
+      <div class="modal-header">
+        <h3>コメントを編集</h3>
+        <button type="button" id="closeCommentEditorModal" class="btn-icon" aria-label="閉じる">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:0.85rem;color:#555;margin-bottom:0.75rem;">入力したコメントがレポートの該当箇所に赤ペン風で表示されます。空欄で保存するとコメントを削除します。</p>
+        <div style="margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+          <label for="commentFontSelect" style="font-size:0.85rem;color:#555;white-space:nowrap;">フォント：</label>
+          <select id="commentFontSelect" style="font-size:0.9rem;padding:0.2rem 0.4rem;border-radius:4px;border:1px solid #ccc;flex:1;min-width:140px;">
+            <option value="Yomogi">よもぎ (Yomogi)</option>
+            <option value="Hachi Maru Pop">はちまるポップ (Hachi Maru Pop)</option>
+            <option value="Klee One">クレーワン (Klee One)</option>
+            <option value="Zen Kurenaido">禅紅梅 (Zen Kurenaido)</option>
+            <option value="Yuji Syuku">勇字塾 (Yuji Syuku)</option>
+          </select>
+          <label for="commentFontSizeSelect" style="font-size:0.85rem;color:#555;white-space:nowrap;">サイズ：</label>
+          <select id="commentFontSizeSelect" style="font-size:0.9rem;padding:0.2rem 0.4rem;border-radius:4px;border:1px solid #ccc;">
+            <option value="0.75rem">極小</option>
+            <option value="0.85rem">小</option>
+            <option value="0.95rem">中</option>
+            <option value="1.1rem">大</option>
+            <option value="1.25rem">極大</option>
+          </select>
+        </div>
+        <div id="commentHighlightToolbar" style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+          <span style="font-size:0.8rem;color:#555;white-space:nowrap;">蛍光ペン：</span>
+          <button type="button" class="btn-highlight" data-color="#FFFF66" title="黄色" style="background:#FFFF66;border:1px solid #bbb;border-radius:3px;width:24px;height:24px;cursor:pointer;padding:0;"></button>
+          <button type="button" class="btn-highlight" data-color="#66FF99" title="緑" style="background:#66FF99;border:1px solid #bbb;border-radius:3px;width:24px;height:24px;cursor:pointer;padding:0;"></button>
+          <button type="button" class="btn-highlight" data-color="#FF99CC" title="ピンク" style="background:#FF99CC;border:1px solid #bbb;border-radius:3px;width:24px;height:24px;cursor:pointer;padding:0;"></button>
+          <button type="button" class="btn-highlight" data-color="#99CCFF" title="水色" style="background:#99CCFF;border:1px solid #bbb;border-radius:3px;width:24px;height:24px;cursor:pointer;padding:0;"></button>
+          <button type="button" class="btn-highlight" data-color="#FFCC66" title="オレンジ" style="background:#FFCC66;border:1px solid #bbb;border-radius:3px;width:24px;height:24px;cursor:pointer;padding:0;"></button>
+          <button type="button" id="btnRemoveHighlight" style="background:#fff;border:1px solid #ccc;border-radius:3px;padding:0 7px;height:24px;cursor:pointer;font-size:0.75rem;color:#555;">消去</button>
+        </div>
+        <div id="commentEditorDiv"
+             contenteditable="true"
+             role="textbox"
+             aria-multiline="true"
+             aria-label="コメント入力"
+             data-placeholder="コメントを入力..."></div>
+        <div class="form-actions" style="margin-top:1rem;">
+          <button type="button" id="btnSaveComment" class="btn btn-primary">保存</button>
+          <button type="button" id="btnCancelComment" class="btn btn-secondary">キャンセル</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- 上書き／別名保存 選択モーダル -->
   <div id="saveOptionsModal" class="modal" hidden>
