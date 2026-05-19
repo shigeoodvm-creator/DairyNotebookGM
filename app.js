@@ -5,6 +5,7 @@
   var REQUIRED_COLS = ['動物ID', '生年月日'];
   var MAIN_METRICS = ['DWP$', 'NM$', 'TPI'];
   var MAX_ADDITIONAL = 5;
+  var MAX_GRAPH_METRICS = 24;
 
   /** セキュリティ: 許可するフォント・サイズのホワイトリスト */
   var ALLOWED_FONTS = ['Yomogi', 'Hachi Maru Pop', 'Klee One', 'Zen Kurenaido', 'Yuji Syuku'];
@@ -112,11 +113,13 @@
   var reportGenerated = false;
   var commentEditorTarget = null;
   var chartInstances = [];
-  var chartInstancesByContainer = { scatterDateCard: [], scatterYearCard: [] };
+  var chartInstancesByContainer = { scatterDateCard: [], scatterYearCard: [], graphScatterDateCard: [], graphScatterYearCard: [] };
   /** 散布図でホバー中の個体ID。全散布図で同一IDをハイライトするために使用 */
   var scatterHoveredId = null;
   /** レポート表示中の行（ID検索で参照） */
   var reportRows = [];
+  var graphSelectedMetrics = [];
+  var graphReportGenerated = false;
 
   /** ローカル保存（ユーザー指定JSONへ保存する） */
   var FS_SUPPORTED = !!(window.showOpenFilePicker && window.showSaveFilePicker && window.indexedDB);
@@ -321,6 +324,9 @@
     renderChips();
     refillMetricDropdown();
     updateBenchmarkInputs();
+    renderGraphChips();
+    refillGraphMetricDropdown();
+    updateGraphBenchmarkInputs();
 
     // ベンチマーク値の復元
     var benches = st.benchmarks && typeof st.benchmarks === 'object' ? st.benchmarks : {};
@@ -644,7 +650,24 @@
     commentFontSelect: document.getElementById('commentFontSelect'),
     commentFontSizeSelect: document.getElementById('commentFontSizeSelect'),
     btnSaveComment: document.getElementById('btnSaveComment'),
-    btnCancelComment: document.getElementById('btnCancelComment')
+    btnCancelComment: document.getElementById('btnCancelComment'),
+    // グラフレポート
+    navTabGraphReport: document.getElementById('navTabGraphReport'),
+    sectionGraphReport: document.getElementById('sectionGraphReport'),
+    graphReportContent: document.getElementById('graphReportContent'),
+    graphReportHeader: document.getElementById('graphReportHeader'),
+    graphScatterDateCard: document.getElementById('graphScatterDateCard'),
+    graphScatterYearCard: document.getElementById('graphScatterYearCard'),
+    graphMetricSearch: document.getElementById('graphMetricSearch'),
+    graphMetricSelect: document.getElementById('graphMetricSelect'),
+    graphSelectedChips: document.getElementById('graphSelectedChips'),
+    graphSelectedCount: document.getElementById('graphSelectedCount'),
+    graphShowYearAvg: document.getElementById('graphShowYearAvg'),
+    graphShowTrendLine: document.getElementById('graphShowTrendLine'),
+    graphBenchmarkInputs: document.getElementById('graphBenchmarkInputs'),
+    btnGenerateGraphReport: document.getElementById('btnGenerateGraphReport'),
+    graphReportActionsHeader: document.getElementById('graphReportActionsHeader'),
+    btnPrintGraphReport: document.getElementById('btnPrintGraphReport')
   };
 
   function showError(msg) {
@@ -660,6 +683,7 @@
     overlay.style.display = show ? '' : 'none';
     if (el.loadingText) el.loadingText.textContent = text || '処理中...';
     el.btnGenerate.disabled = show;
+    if (el.btnGenerateGraphReport) el.btnGenerateGraphReport.disabled = show;
   }
 
   function parseDate(s) {
@@ -1614,22 +1638,27 @@
   function openDetailModal(row) {
     setLoading(false);
     var reportSection = document.getElementById('sectionReport');
-    if (reportSection && reportSection.hidden) return;
+    var graphSection = document.getElementById('sectionGraphReport');
+    var reportVisible = (reportSection && !reportSection.hidden) || (graphSection && !graphSection.hidden);
+    if (!reportVisible) return;
     if (!row || typeof row !== 'object') {
       el.detailModalBody.innerHTML = '<p>個体データがありません。散布図の<strong>点</strong>をダブルクリックしてください（線や目標値の上ではありません）。</p>';
       el.detailModal.hidden = false;
       el.detailModal.style.display = '';
       return;
     }
-    var metrics = getDisplayMetrics();
+    var isGraphTab = graphSection && !graphSection.hidden;
+    var metrics = isGraphTab ? graphSelectedMetrics : getDisplayMetrics();
     var html = '<dl>';
     ['動物ID', 'Official ID', '動物名', '生年月日', '品種'].forEach(function (k) {
       if (csvHeaders.indexOf(k) !== -1 && row[k] != null) html += '<dt>' + escapeHtml(k) + '</dt><dd>' + escapeHtml(String(row[k])) + '</dd>';
     });
-    MAIN_METRICS.forEach(function (m) {
-      html += '<dt>' + escapeHtml(m) + '</dt><dd>' + formatNum(parseNum(row[m])) + '</dd>';
-    });
-    metrics.filter(function (m) { return MAIN_METRICS.indexOf(m) === -1; }).forEach(function (m) {
+    if (!isGraphTab) {
+      MAIN_METRICS.forEach(function (m) {
+        html += '<dt>' + escapeHtml(m) + '</dt><dd>' + formatNum(parseNum(row[m])) + '</dd>';
+      });
+    }
+    metrics.filter(function (m) { return isGraphTab || MAIN_METRICS.indexOf(m) === -1; }).forEach(function (m) {
       html += '<dt>' + escapeHtml(m) + '</dt><dd>' + formatNum(parseNum(row[m])) + '</dd>';
     });
     if (csvHeaders.indexOf('BVDV Results') !== -1 && row['BVDV Results'] != null) {
@@ -1649,6 +1678,175 @@
       if (input && input.value.trim() !== '') bench[m] = input.value.trim();
     });
     return bench;
+  }
+
+  function renderGraphChips() {
+    if (!el.graphSelectedChips) return;
+    el.graphSelectedChips.innerHTML = '';
+    graphSelectedMetrics.forEach(function (col) {
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.innerHTML = escapeHtml(col) + ' <button type="button" aria-label="解除">×</button>';
+      chip.querySelector('button').addEventListener('click', function () {
+        graphSelectedMetrics = graphSelectedMetrics.filter(function (c) { return c !== col; });
+        renderGraphChips();
+        refillGraphMetricDropdown();
+        updateGraphBenchmarkInputs();
+      });
+      el.graphSelectedChips.appendChild(chip);
+    });
+    if (el.graphSelectedCount) el.graphSelectedCount.textContent = graphSelectedMetrics.length + '個選択';
+  }
+
+  function refillGraphMetricDropdown() {
+    if (!el.graphMetricSelect) return;
+    var search = (el.graphMetricSearch ? el.graphMetricSearch.value || '' : '').trim().toLowerCase();
+    var opts = numericColumns.filter(function (c) {
+      if (graphSelectedMetrics.indexOf(c) !== -1) return false;
+      if (search) {
+        var t = traitDictionary[c];
+        var text = (c + ' ' + (t ? t.nameJa + ' ' + (t.synonyms || []).join(' ') : '')).toLowerCase();
+        return text.indexOf(search) !== -1;
+      }
+      return true;
+    });
+    el.graphMetricSelect.innerHTML = opts.map(function (c) {
+      return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
+    }).join('');
+  }
+
+  function updateGraphBenchmarkInputs() {
+    if (!el.graphBenchmarkInputs) return;
+    el.graphBenchmarkInputs.innerHTML = graphSelectedMetrics.map(function (m) {
+      return '<div class="b-item"><label>' + escapeHtml(m) + '</label><input type="number" step="any" data-metric="' + escapeHtml(m) + '" placeholder="目標値"></div>';
+    }).join('');
+  }
+
+  function collectGraphBenchmarks() {
+    var bench = {};
+    graphSelectedMetrics.forEach(function (m) {
+      var input = el.graphBenchmarkInputs ? el.graphBenchmarkInputs.querySelector('input[data-metric="' + m + '"]') : null;
+      if (input && input.value.trim() !== '') bench[m] = input.value.trim();
+    });
+    return bench;
+  }
+
+  function runGraphReport() {
+    if (isExpired()) { showError('利用期限が切れています。配布元にお問い合わせください。'); return; }
+    if (rawRows.length === 0) { showError('CSVをアップロードしてください。データ入力タブでCSVを読み込んでください。'); return; }
+    if (graphSelectedMetrics.length === 0) { showError('形質を1つ以上選択してください。'); return; }
+
+    setLoading(true, 'グラフレポート生成中...');
+    setTimeout(function () {
+      try {
+        var dateFrom = el.dateFrom.value || null;
+        var dateTo = el.dateTo.value || null;
+        var rows = applyDateFilter(rawRows, dateFrom, dateTo);
+        if (rows.length === 0) {
+          setLoading(false);
+          showError('指定した期間に該当するデータがありません。');
+          return;
+        }
+        var data = { rows: rows };
+        var showYearAvg = el.graphShowYearAvg ? el.graphShowYearAvg.checked : false;
+        var showTrendLine = el.graphShowTrendLine ? el.graphShowTrendLine.checked : false;
+        var benchmarks = collectGraphBenchmarks();
+        var farmName = el.farmName ? el.farmName.value.trim() : '';
+
+        if (el.graphReportHeader) {
+          el.graphReportHeader.innerHTML = buildReportHeader(farmName, dateFrom, dateTo, rows);
+        }
+
+        renderScatterSet('graphScatterDateCard', 'date', data, graphSelectedMetrics, false, benchmarks, showTrendLine);
+        renderScatterSet('graphScatterYearCard', 'year', data, graphSelectedMetrics, showYearAvg, benchmarks, showTrendLine);
+
+        // 3列グリッドに変更
+        ['graphScatterDateCard', 'graphScatterYearCard'].forEach(function (id) {
+          var card = document.getElementById(id);
+          if (!card) return;
+          var grid = card.querySelector('.scatter-grid');
+          if (grid) grid.className = 'scatter-grid-graph';
+        });
+
+        if (el.graphReportContent) el.graphReportContent.hidden = false;
+        graphReportGenerated = true;
+        if (el.graphReportActionsHeader) el.graphReportActionsHeader.hidden = false;
+
+        el.graphReportContent.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) {
+        setLoading(false);
+        showError('グラフレポート生成中にエラーが発生しました: ' + (err && err.message ? err.message : String(err)));
+        return;
+      }
+      setLoading(false);
+    }, 10);
+  }
+
+  function openGraphReportPrintView() {
+    var elContent = document.getElementById('graphReportContent');
+    if (!elContent || elContent.hidden) {
+      showError('グラフレポートがありません。先にグラフレポートを生成してください。');
+      return;
+    }
+    var clone = elContent.cloneNode(true);
+
+    ['graphScatterDateCard', 'graphScatterYearCard'].forEach(function (id) {
+      var card = clone.querySelector('#' + id);
+      if (!card) return;
+      var grid = card.querySelector('.scatter-grid-graph') || card.querySelector('.scatter-grid');
+      if (!grid) return;
+      var cells = Array.prototype.slice.call(grid.querySelectorAll('.scatter-cell'));
+      var pages = document.createElement('div');
+      pages.className = 'graph-print-pages';
+      for (var i = 0; i < cells.length; i += 6) {
+        var page = document.createElement('div');
+        page.className = 'graph-print-page';
+        for (var j = 0; j < 6 && i + j < cells.length; j++) {
+          page.appendChild(cells[i + j].cloneNode(true));
+        }
+        pages.appendChild(page);
+      }
+      grid.parentNode.replaceChild(pages, grid);
+    });
+
+    var origCanvases = elContent.querySelectorAll('canvas');
+    var cloneCanvases = clone.querySelectorAll('canvas');
+    for (var i = 0; i < origCanvases.length && i < cloneCanvases.length; i++) {
+      var img = document.createElement('img');
+      img.src = origCanvases[i].toDataURL('image/png');
+      img.style.maxWidth = '100%';
+      img.style.height = 'auto';
+      img.alt = 'グラフ';
+      cloneCanvases[i].parentNode.replaceChild(img, cloneCanvases[i]);
+    }
+
+    var inlineCss = getPrintViewInlineCss('graphs');
+    var printCss = '@page{size:A4 landscape;margin:8mm;}' +
+      '.graph-print-pages{display:block;}' +
+      '.graph-print-page{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:0.4rem;page-break-after:always;break-after:page;page-break-inside:avoid;break-inside:avoid;min-height:88vh;}' +
+      '.graph-print-page:last-child{page-break-after:auto;break-after:auto;}' +
+      '.graph-print-page .scatter-cell{min-height:0;page-break-inside:avoid;break-inside:avoid;}' +
+      '.graph-print-page .scatter-cell img{max-width:100%;max-height:100%;object-fit:contain;}' +
+      '.scatter-set{page-break-before:auto!important;}' +
+      '#graphScatterYearCard{page-break-before:always!important;}' +
+      '@media print{.print-hint{display:none!important}}';
+
+    var html = '<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>グラフレポート印刷 - DairyNotebookGM</title>' +
+      '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+      '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+      '<link href="https://fonts.googleapis.com/css2?family=Yomogi&family=Hachi+Maru+Pop&family=Klee+One&family=Zen+Kurenaido&family=Yuji+Syuku&display=swap" rel="stylesheet">' +
+      '<style>' + inlineCss + printCss + '</style></head><body class="print-view">' +
+      '<div class="report-content print-report-body print-mode-graphs">' + clone.innerHTML + '</div>' +
+      '<p class="print-hint" style="margin:2rem 1.5rem;font-size:0.9rem;color:#666;">Ctrl+P で印刷してください。</p></body></html>';
+
+    var blob = new Blob([html], { type: 'text/html; charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var win = window.open(url, '_blank', 'noopener');
+    if (win) win.addEventListener('load', function () { URL.revokeObjectURL(url); });
+    else {
+      URL.revokeObjectURL(url);
+      showError('ポップアップがブロックされています。ブラウザでポップアップを許可してください。');
+    }
   }
 
   /** 散布図のホバーIDを更新し、全散布図を再描画する。ID検索・表クリック・プロットホバーから呼ぶ */
@@ -1791,12 +1989,8 @@
         renderScatterSet('scatterYearCard', 'year', data, metrics, showYearAvg, benchmarks, showTrendLine);
 
         reportGenerated = true;
-        el.sectionInput.hidden = true;
-        el.sectionReport.hidden = false;
-        if (el.reportActionsHeader) el.reportActionsHeader.hidden = false;
         el.btnBackEdit.style.display = 'inline-block';
-        if (el.navTabInput) el.navTabInput.classList.remove('active');
-        if (el.navTabReport) el.navTabReport.classList.add('active');
+        switchTab('report');
 
         scrollReportToTop();
 
@@ -2153,12 +2347,17 @@
     el.additionalMetricSelect.innerHTML = '';
     el.benchmarkInputs.innerHTML = '';
     reportGenerated = false;
-    el.sectionReport.hidden = true;
-    if (el.reportActionsHeader) el.reportActionsHeader.hidden = true;
-    el.sectionInput.hidden = false;
+    graphReportGenerated = false;
+    graphSelectedMetrics = [];
     el.btnBackEdit.style.display = 'none';
+    if (el.graphSelectedChips) el.graphSelectedChips.innerHTML = '';
+    if (el.graphSelectedCount) el.graphSelectedCount.textContent = '0個選択';
+    if (el.graphBenchmarkInputs) el.graphBenchmarkInputs.innerHTML = '';
+    if (el.graphMetricSelect) el.graphMetricSelect.innerHTML = '';
+    if (el.graphReportContent) el.graphReportContent.hidden = true;
     chartInstances.forEach(function (c) { try { c.destroy(); } catch (e) {} });
     chartInstances = [];
+    switchTab('input');
     reportComments = {};
     commentModeActive = false;
     var rc = document.getElementById('reportContent');
@@ -2171,14 +2370,10 @@
 
   function backToEdit() {
     reportGenerated = false;
-    el.sectionReport.hidden = true;
-    if (el.reportActionsHeader) el.reportActionsHeader.hidden = true;
-    el.sectionInput.hidden = false;
     el.btnBackEdit.style.display = 'none';
-    if (el.navTabReport) el.navTabReport.classList.remove('active');
-    if (el.navTabInput) el.navTabInput.classList.add('active');
     if (el.detailModal) el.detailModal.hidden = true;
     if (el.termPanel) el.termPanel.hidden = true;
+    switchTab('input');
   }
 
   function renderChips() {
@@ -2268,6 +2463,7 @@
       numericColumns = result.numericColumns || [];
       refillMetricDropdown();
       updateBenchmarkInputs();
+      refillGraphMetricDropdown();
       if (result.dateFailCount > 0) showError('生年月日を解釈できなかった行が ' + result.dateFailCount + ' 件あり、除外しました。');
       setLoading(false);
       scheduleFileSave();
@@ -2310,6 +2506,7 @@
         numericColumns = result.numericColumns || [];
         refillMetricDropdown();
         updateBenchmarkInputs();
+        refillGraphMetricDropdown();
         if (result.dateFailCount > 0) showError('生年月日を解釈できなかった行が ' + result.dateFailCount + ' 件あり、除外しました。');
         setLoading(false);
         scheduleFileSave();
@@ -2397,6 +2594,22 @@
   el.btnSavePdf.addEventListener('click', savePdf);
   if (el.btnPrintTables) el.btnPrintTables.addEventListener('click', function () { openPrintView('tables'); });
   if (el.btnPrintGraphs) el.btnPrintGraphs.addEventListener('click', function () { openPrintView('graphs'); });
+  if (el.btnPrintGraphReport) el.btnPrintGraphReport.addEventListener('click', openGraphReportPrintView);
+  if (el.btnGenerateGraphReport) el.btnGenerateGraphReport.addEventListener('click', runGraphReport);
+  if (el.graphMetricSelect) {
+    el.graphMetricSelect.addEventListener('dblclick', function () {
+      var opt = this.options[this.selectedIndex];
+      if (!opt || graphSelectedMetrics.length >= MAX_GRAPH_METRICS) return;
+      var v = opt.value;
+      if (v && graphSelectedMetrics.indexOf(v) === -1) {
+        graphSelectedMetrics.push(v);
+        renderGraphChips();
+        refillGraphMetricDropdown();
+        updateGraphBenchmarkInputs();
+      }
+    });
+  }
+  if (el.graphMetricSearch) el.graphMetricSearch.addEventListener('input', refillGraphMetricDropdown);
   el.closeTermPanel.addEventListener('click', function () { el.termPanel.hidden = true; });
   el.closeDetailModal.addEventListener('click', function () { el.detailModal.hidden = true; });
   el.detailModal.addEventListener('click', function (e) { if (e.target === el.detailModal) el.detailModal.hidden = true; });
@@ -2482,20 +2695,31 @@
       }
     });
   }
-  if (el.navTabInput) el.navTabInput.addEventListener('click', function () {
-    el.sectionInput.hidden = false;
-    el.sectionReport.hidden = true;
-    if (el.reportActionsHeader) el.reportActionsHeader.hidden = true;
-    el.navTabReport.classList.remove('active');
-    el.navTabInput.classList.add('active');
-  });
-  if (el.navTabReport) el.navTabReport.addEventListener('click', function () {
-    el.sectionReport.hidden = false;
-    if (el.reportActionsHeader) el.reportActionsHeader.hidden = !reportGenerated;
+  function switchTab(tab) {
+    var tabs = [el.navTabInput, el.navTabReport, el.navTabGraphReport];
+    tabs.forEach(function (t) { if (t) t.classList.remove('active'); });
     el.sectionInput.hidden = true;
-    el.navTabInput.classList.remove('active');
-    el.navTabReport.classList.add('active');
-  });
+    el.sectionReport.hidden = true;
+    if (el.sectionGraphReport) el.sectionGraphReport.hidden = true;
+    if (el.reportActionsHeader) el.reportActionsHeader.hidden = true;
+    if (el.graphReportActionsHeader) el.graphReportActionsHeader.hidden = true;
+    if (tab === 'input') {
+      el.sectionInput.hidden = false;
+      if (el.navTabInput) el.navTabInput.classList.add('active');
+    } else if (tab === 'report') {
+      el.sectionReport.hidden = false;
+      if (el.reportActionsHeader) el.reportActionsHeader.hidden = !reportGenerated;
+      if (el.navTabReport) el.navTabReport.classList.add('active');
+    } else if (tab === 'graph-report') {
+      if (el.sectionGraphReport) el.sectionGraphReport.hidden = false;
+      if (el.graphReportActionsHeader) el.graphReportActionsHeader.hidden = !graphReportGenerated;
+      if (el.navTabGraphReport) el.navTabGraphReport.classList.add('active');
+    }
+  }
+
+  if (el.navTabInput) el.navTabInput.addEventListener('click', function () { switchTab('input'); });
+  if (el.navTabReport) el.navTabReport.addEventListener('click', function () { switchTab('report'); });
+  if (el.navTabGraphReport) el.navTabGraphReport.addEventListener('click', function () { switchTab('graph-report'); });
   if (el.btnAllTerms) el.btnAllTerms.addEventListener('click', function () {
     if (el.termSearch) {
       el.termSearch.value = '';

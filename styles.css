@@ -56,18 +56,52 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 1rem;
   padding: 0 24px;
-  height: 88px;
+  min-height: 64px;
   background: #fff;
   border-bottom: 1px solid #e0e0e0;
   box-shadow: 0 1px 3px rgba(0,0,0,.08);
   position: sticky;
   top: 0;
   z-index: 100;
+  flex-wrap: nowrap;
+}
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  max-width: min(100%, 720px);
+}
+.header-action-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   flex-wrap: wrap;
 }
-.app-header-brand { display: flex; align-items: center; gap: 0.75rem; }
+.header-action-group[hidden] {
+  display: none !important;
+}
+.app-header-actions:has(.header-action-group:not([hidden]):not(.header-buttons)) .header-buttons {
+  padding-left: 0.5rem;
+  margin-left: 0.25rem;
+  border-left: 1px solid #e8eaed;
+}
+.app-header-actions .btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
 .app-logo { display: block; height: 48px; width: auto; }
 .app-header h1 { margin: 0; font-size: 34px; font-weight: 700; color: #202124; letter-spacing: -0.3px; white-space: nowrap; line-height: 1; }
 .logo-abbr { color: #1976d2; }
@@ -91,7 +125,7 @@ body {
 .nav-tab:hover { color: #202124; background: #f8f9fa; }
 .nav-tab.active { color: #1976d2; border-bottom-color: #1976d2; font-weight: 500; }
 
-.header-buttons { display: flex; gap: 8px; }
+.header-buttons { display: flex; gap: 8px; flex-shrink: 0; }
 .btn-ghost {
   padding: 7px 14px;
   border: 1px solid #dadce0;
@@ -336,7 +370,7 @@ body {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .report-section { margin-top: 0; }
-.report-actions-header { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.report-actions-header { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
 .report-content { margin-top: 0.5rem; }
 
 .report-header { margin-bottom: var(--space); }
@@ -407,6 +441,16 @@ body {
 .scatter-cell { min-height: 260px; position: relative; break-inside: avoid; page-break-inside: avoid; }
 .scatter-cell canvas { max-width: 100%; max-height: 100%; }
 .scatter-no-data { padding: 1rem; color: var(--text-muted); font-size: 0.9rem; text-align: center; margin: 0; }
+
+/* グラフレポート：3列グリッド */
+.scatter-grid-graph {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+#graphScatterDateCard { page-break-before: auto; }
+#graphScatterYearCard { page-break-before: always; }
 
 /* IDで探す（散布図ハイライト用） */
 .scatter-search-card { padding: 0.75rem 1rem; }
@@ -836,3 +880,20 @@ body.pdf-export .report-table .report-table-title {
   #scatterDateCard.scatter-set { page-break-before: auto; }
   #scatterDateCard { page-break-after: always; }
 }
+
+/* グラフレポート印刷：A4横・3列×2行 */
+.graph-print-pages { display: block; }
+.graph-print-page {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 0.4rem;
+  page-break-after: always;
+  break-after: page;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  min-height: 88vh;
+}
+.graph-print-page:last-child { page-break-after: auto; break-after: auto; }
+.graph-print-page .scatter-cell { min-height: 0; page-break-inside: avoid; break-inside: avoid; }
+.graph-print-page .scatter-cell img { max-width: 100%; max-height: 100%; object-fit: contain; }
